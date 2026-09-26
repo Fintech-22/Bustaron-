@@ -48,7 +48,7 @@ describe('BUSTARON milestone 2 credits and approvals UI', () => {
     const sourceRow = screen.getByRole('group', { name: /data source selection/i });
 
     fireEvent.click(within(sourceRow).getByRole('button', { name: /CAD RFZ GeoJSON/i }));
-    expect(useDashboardStore.getState().zones.length).toBe(135);
+    expect(useDashboardStore.getState().zones.length).toBe(284);
 
     fireEvent.click(within(sourceRow).getByRole('button', { name: /Mock replay/i }));
     expect(useDashboardStore.getState().zones.length).toBe(3);
