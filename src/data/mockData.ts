@@ -7,20 +7,11 @@ import type {
   CreditLedgerEntry,
   CreditWallet,
   Drone,
-  LayerDefinition,
   Mission,
   SlotAuction,
   SystemWidget,
   WeatherAlert,
 } from '../types/domain';
-
-export const layerDefinitions: LayerDefinition[] = [
-  { id: 'drones', label: 'Drones', description: 'Active and grounded fleet markers' },
-  { id: 'routes', label: 'Routes', description: 'Mock mission corridors' },
-  { id: 'restrictedZones', label: 'RFZ', description: 'Restricted and sensitive airspace' },
-  { id: 'weather', label: 'Weather', description: 'Mock wind and rain cells' },
-  { id: 'grid', label: 'Grid', description: 'Hong Kong tactical reference grid' },
-];
 
 export const mockDrones: Drone[] = [
   {

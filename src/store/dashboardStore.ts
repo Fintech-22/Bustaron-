@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { layerDefinitions } from '../data/mockData';
+import { layerDefinitions } from '../config/layers';
 import type {
   AppState,
   ApprovalRequest,

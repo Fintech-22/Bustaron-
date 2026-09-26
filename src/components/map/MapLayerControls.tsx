@@ -1,4 +1,4 @@
-import { layerDefinitions } from '../../data/mockData';
+import { layerDefinitions } from '../../config/layers';
 import type { LayerDefinition, LayerId } from '../../types/domain';
 
 interface MapLayerControlsProps {

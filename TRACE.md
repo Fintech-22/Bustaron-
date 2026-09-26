@@ -512,3 +512,91 @@ need to revert UI work selectively.
   Build to a temp `outDir` and use `vite preview` instead.
 - A `.mjs` file placed outside `tools/**` fails lint, because `eslint.config.js` only sets
   node globals for `tools/**`. Keep ad-hoc Node scripts in `tools/` or add an ignore.
+
+---
+
+# ══ ORCHESTRATION RUN — STEP 0: STABILIZE (2026-09-27, entry #0) ══
+
+> New run. Hierarchy: Overview → Supervisor → Worker + paired Reviewer.
+> Entries from this run are tagged `[OVERVIEW]` / `[SUPERVISOR:<task>]` /
+> `[WORKER:<task>]` / `[REVIEWER:<task>]` per the universal agent prompts.
+
+## [SUPERVISOR:step-0] What was found
+
+**1. An independent verification audit** (`VERIFICATION_AUDIT.md`, `AUDIT_SUMMARY.md`)
+established the true state at `8a584fc`. Its findings, re-confirmed here:
+
+| Claim in the handover brief | Truth |
+|---|---|
+| `probe_lifecycle` 36/36 | **38/38** — source has exactly 38 `assert()` calls |
+| 462 skycells | **594** — `HK_BOUNDS` ÷ 600 m = 22×27; 462 was a viewport-clipped count |
+| `probe_api` 22/22 | 22/22 only from a **pristine** seed; 21/22 on a repeat run |
+| "110 restricted RFZ polygons" | viewport-dependent; measured 134 fill / 135 line at 1440×900 |
+
+Other real defects found: `AUCTION_SETTLE` / `APPROVAL_FILE` declared in `TXType` with no
+dispatch branch (→ `400` for schema-valid input); `GENESIS` likewise advertised but minted
+only at seed time; `/api/fleet`, `/api/missions`, `/api/ledger` returning empty arrays;
+`settleAuction` service-only; a vestigial `min=80 max=220` altitude slider in `MissionPanel`
+that filtered nothing; KPI labels differing from PRD S110/S117 by casing; `dashboardStore.ts`
+importing a *data* module (contradicting the stated seam invariant); no README (S94); no
+pytest suite (S91); no ruff config (S93); `.env.example` incomplete (S95);
+`docs/milestone-03.md` referenced but absent.
+
+**2. The working tree already contained an uncommitted fix set** addressing most of the
+above — **not authored by this run** (it appeared between 01:35 and 02:30). It comprises:
+`.env.example` (S95) · `eslint.config.js` (`.workbuddy-ai/**` ignore) · `package.json`
+(plain `vite`/`tsc`/`vitest` scripts + `preview`/`api`/`probe:*`) · `scripts/generate_cad_data.py`
+(lint fixes) · `server/main.py` (`TXType` cleanup + `UNIMPLEMENTED_TX_TYPES` + seed helpers) ·
+`server/probe_api.py` (**self-reseed → idempotent**) · `AppShell.tsx` (KPI Title Case) ·
+`MissionPanel.tsx` (vestigial slider removed) · `prdKpi.test.tsx` (assertions updated) ·
+new `README.md` (S94) · new `ruff.toml` (S93).
+
+**This run's first action was therefore to VALIDATE that work, not to redo or clobber it.**
+
+## [WORKER:step-0] What was fixed / confirmed
+
+- **Validated the pre-existing uncommitted fix set.** All four gates and all four probes
+  re-run green on the working tree as found. No changes were needed to it.
+- **`probe_api` idempotency — CONFIRMED FIXED.** Two consecutive runs both
+  `ALL CHECKS PASSED`, exit 0. The failure mode recorded in the audit is closed.
+- **`TXType` contract — CONFIRMED FIXED.** `AUCTION_SETTLE` / `APPROVAL_FILE` / `GENESIS`
+  are no longer advertised as client-submittable; the omission is deliberate and greppable
+  via `UNIMPLEMENTED_TX_TYPES`.
+- **Layering fix (this run).** `layerDefinitions` moved out of `src/data/mockData.ts` into
+  a new `src/config/layers.ts`; `dashboardStore.ts` and `MapLayerControls.tsx` now import
+  from there. This makes the documented invariant — *the store never imports a data module*
+  — literally true. Previously `dashboardStore.ts:2` imported `mockData` directly, which the
+  audit flagged as a false claim.
+- **`docs/milestone-03.md` created (this run).** The brief cited it; it did not exist.
+  Documents M3 phase 1, the verification table, the deliberate scope decisions, and the
+  phase-2 backlog.
+
+## [REVIEWER:step-0] Concerns raised and their status
+
+1. **Uncommitted third-party work must not be silently absorbed into a commit.** — OPEN.
+   The fix set in the working tree is not this run's. It has been validated but **not
+   committed**; the commit boundary is a decision for the user. Nothing has been committed.
+2. **A green gate is not proof of correctness.** — MITIGATED. Every claim above is backed by
+   a command run in this session, not by reading a comment.
+3. **`/api/fleet` / `/api/missions` still return empty.** — OPEN, deferred to STEP 2.
+4. **No pytest suite (S91).** — OPEN, deferred to STEP 2.
+5. **Settle / file endpoints still unimplemented** (now honestly un-advertised). — OPEN,
+   deferred to STEP 2.
+
+## [SUPERVISOR:step-0] VERDICT
+
+**PASS WITH NOTES.** The codebase builds clean and all existing tests pass; every audit
+defect is either fixed or explicitly deferred with a reason. **Not committed.**
+
+| Gate / probe | Result |
+|---|---|
+| `tsc -b` | exit 0 |
+| `vite build` | exit 0 |
+| `eslint . --max-warnings=0` | exit 0 |
+| `vitest run` | **93 passed / 14 files** |
+| `bun scripts/probe_lifecycle.ts` | **38/38** |
+| `bun scripts/probe_routes.ts` | **42/42** |
+| `bun scripts/probe_m3_seam.ts` | **7/7** |
+| `python server/probe_api.py` ×2 | **22/22**, both runs, exit 0 |
+
+Baseline for STEP 1 established.
