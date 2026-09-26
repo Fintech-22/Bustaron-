@@ -27,12 +27,11 @@ related: []
 
 - [[m3-scope-backend-ledger-agents]] — M3 scope - backend, ledger, agents · status: draft · 2026-09-26
 
-### Decision (5)
+### Decision (4)
 
 - [[cad-rings-simplified-with-douglas-peucker-after-farthest-point-corruption]] — CAD rings simplified with Douglas-Peucker after farthest-point corruption · status: accepted · 2026-09-26
 - [[mapbox-sdk-loaded-via-cdn-because-npm-install-is-banned]] — Mapbox SDK loaded via CDN because npm install is banned · status: accepted · 2026-09-26
 - [[prd-defects-1-6-deferred-out-of-scope-this-session]] — PRD defects 1-6 deferred out of scope this session · status: accepted · 2026-09-26
-- [[test-decision]] — Test decision · status: draft · 2026-09-26
 - [[vault-lives-at-docs-vault-and-is-configurable]] — Vault lives at docs/vault and is configurable · status: accepted · 2026-09-26
 
 ### Bug (1)
@@ -55,4 +54,4 @@ related: []
 - `bugs/` — Bug notes
 - `sessions/` — Session notes
 
-_10 note(s) · vault: `docs/vault`_
+_9 note(s) · vault: `docs/vault`_
