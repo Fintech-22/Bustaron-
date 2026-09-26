@@ -25,9 +25,23 @@ const navItems: NavItem[] = [
   {
     section: 'missions',
     label: 'Mission queue',
-    description: 'Mock requests and routes',
+    description: 'Planning, A* routes and requests',
     role: 'both',
     icon: 'MIS',
+  },
+  {
+    section: 'wallet',
+    label: 'Credit wallet',
+    description: 'Credits and slot auctions',
+    role: 'both',
+    icon: 'CRD',
+  },
+  {
+    section: 'approvals',
+    label: 'Approvals queue',
+    description: 'Escrowed flight requests',
+    role: 'admin',
+    icon: 'APR',
   },
   {
     section: 'admin',

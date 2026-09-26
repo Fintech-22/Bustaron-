@@ -1,7 +1,7 @@
 # BUSTARON — SESSION HANDOFF
 
 > Purpose: let any new AI/engineer resume **without re-reading the whole project**.
-> Last updated: 2026-09-26 14:47 GMT+8
+> Last updated: 2026-09-26 16:10 GMT+8 — **M2 complete, gates green.**
 
 ---
 
@@ -12,24 +12,24 @@
 | Product | **BUSTARON v3** — Hong Kong drone airspace / UTM operations platform |
 | Active workspace | `C:\Users\user\WorkBuddy AI\2026-09-24-21-39-57` |
 | Stack | Vite 5.4.21 + React 18 + TypeScript 5.9.3 + Zustand 4 + Tailwind 3 + Vitest 2.1.9 |
-| Current milestone | **M1 — Frontend tactical shell (mock-only). DONE & VERIFIED.** |
+| Current milestone | **M2 — Planning + data adapters. DONE & VERIFIED.** M1 shell verified beneath it. |
 | Source of truth PRD | `C:\Users\user\WorkBuddy AI\2026-09-20-21-42-04\BUSTARON_PRD.md` (58 KB) |
 | Geodata (M2 input) | `C:\Users\user\Downloads\bustaron_map_data\{GeoJSON,KML}` |
 | Extra refs | `C:\Users\user\WorkBuddy AI\2026-09-20-21-42-04\` — `landsd_data/`, `orbitron_js_bundle.js`, `ui_inspect/`, `decentralized_deck.txt`, `proof_carrying_drone.txt` |
-| Git | **NOT a git repo.** No commits. Nothing version-controlled. |
+| Git | **IS a git repo now.** `main`, M1 baseline commit `081e985` + M2 commit. |
 
 ---
 
-## 2. Verification status — ALL GREEN ✅
+## 2. Verification status — ALL GREEN ✅ (M2)
 
-Re-verified 2026-09-26 after repairing the environment (see §4).
+Verified 2026-09-26 16:07 after the M2 build.
 
 | Command | Result |
 |---|---|
 | `tsc -b` | exit 0 |
-| `vite build` | exit 0 — `dist/index.html` 0.56 kB, `dist/assets/index-Dat2gtFk.css` 12.55 kB, `dist/assets/index-Bfwr5nqJ.js` 168.46 kB |
+| `vite build` | exit 0 — `dist/assets/index-yjz_CzkM.js` 407.92 kB (CAD zone pack bundled), CSS 13.42 kB |
 | `eslint . --max-warnings=0` | exit 0, zero warnings |
-| `vitest run` | **3/3 tests pass** (`src/test/App.test.tsx`) |
+| `vitest run` | **47/47 tests pass** (6 files: M1 shell regression + geo/A*/credits/CAD/UI flows) |
 
 M1 acceptance criteria from `docs/system_design.md` §2 are all met.
 
@@ -38,12 +38,19 @@ M1 acceptance criteria from `docs/system_design.md` §2 are all met.
 
 ```bash
 cd "C:/Users/user/WorkBuddy AI/2026-09-24-21-39-57"
-./node_modules/.bin/tsc -b
-./node_modules/.bin/vite build
-./node_modules/.bin/eslint . --max-warnings=0
-./node_modules/.bin/vitest run
-./node_modules/.bin/vite --host 0.0.0.0        # dev server
+B="C:/Users/user/AppData/Local/Programs/@codebufffreebuff-desktop/resources/bun/bun.exe"
+"$B" node_modules/typescript/bin/tsc -b
+"$B" node_modules/vite/bin/vite.js build
+"$B" node_modules/eslint/bin/eslint.js . --max-warnings=0
+"$B" node_modules/vitest/vitest.mjs run
+"$B" node_modules/vite/bin/vite.js --host 0.0.0.0        # dev server
 ```
+
+**There is NO Node.js on this machine.** The `node_modules/.bin` shims exec
+`node`, which is not on PATH. The runtime available here is the Freebuff
+desktop's bundled **bun 1.4.2** at the path above — run each tool's JS entry
+point through it directly (see the commands). Verified working: tsc, vite,
+eslint, vitest.
 Typical direct-binary timings: tsc <10 s, vite build ~19–45 s, vitest ~13–35 s.
 **Do not run `npm install`** — `node_modules` is already complete (241 packages). A re-install triggers the destructive guard described in §4.
 
@@ -130,14 +137,24 @@ There is no repository, so there is **no rollback safety net**. Consider `git in
 2. `git init && git add -A && git commit` to establish a baseline.
 3. Delete the stale `vite.config.ts.timestamp-*.mjs`.
 
-**Then M2 — Planning + data adapters** (per `docs/system_design.md` §1):
-- Introduce real adapter boundaries behind `src/services/mockDataService.ts` for HKO weather, LandsD/Open3Dhk terrain, and CAD/RFZ GeoJSON (source data in `C:\Users\user\Downloads\bustaron_map_data`).
-- Point-in-polygon RFZ checks; A* route planning service.
-- Credits / auction UI flows (operator Credit Wallet + admin Approvals).
+## 6. Next steps — resume point (M3)
 
-**Do NOT start M2 until the baseline commit in step 2 exists.**
+M1 and M2 are both committed. M2 scope (per `docs/system_design.md` §1) is
+complete: adapter boundary, CAD GeoJSON ingestion (135 RFZ zones), RFZ
+point-in-polygon + buffers, A* lattice route planning, credits/auction service
+and UI (Credit Wallet, Approvals Queue). Details and file inventory:
+`docs/milestone-02.md`.
 
-Later milestones, unchanged: M3 FastAPI + Python LLM agents + 3-node PoA ledger · M4 ESP32-S3 firmware + CesiumJS HK 3D demo · M5 ops platform (fleet, logs, maintenance, customer portal, exports) · M6 BVLOS + E2E hardening.
+**Next: M3 — Backend, ledger, agents** (per `docs/system_design.md` §1):
+- FastAPI APIs (the frontend adapters in `src/services/dataBackends.ts` are the
+  exact seam — implement HTTP backends behind the same `DataBackend` interface).
+- Python LLM-agent negotiation, 3-node PoA ledger, blockchain-as-communication.
+- Persist auctions/approvals server-side (frontend state is in-memory today).
+
+Follow-ups noted in `docs/milestone-02.md` §Known follow-ups. The 2D map stays
+the landing view; 3D/Cesium remains behind a nav tab for M4.
+
+Later milestones, unchanged: M4 ESP32-S3 firmware + CesiumJS HK 3D demo · M5 ops platform (fleet, logs, maintenance, customer portal, exports) · M6 BVLOS + E2E hardening.
 
 ---
 
@@ -152,6 +169,8 @@ Later milestones, unchanged: M3 FastAPI + Python LLM agents + 3-node PoA ledger 
 | `docs/class-diagram.mermaid` | Domain class diagram |
 | `docs/sequence-diagram.mermaid` | Runtime sequence diagram |
 | `dist/` | Production build output (verified fresh) |
+| `docs/milestone-02.md` | M2 explainer: adapters, ingestion, A*, credits, verification |
+| `scripts/generate_cad_data.py` | One-shot generator that compacted the CAD GeoJSON into `src/data/cadRfzData.json` |
 | `.workbuddy-ai/memory/2026-09-24.md` | Session work log |
 | `.workbuddy-ai/memory/2026-09-26.md` | Session work log (this session) |
 

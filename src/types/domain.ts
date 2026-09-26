@@ -1,6 +1,6 @@
 export type UserRole = 'operator' | 'admin';
 
-export type NavSection = 'operations' | 'missions' | 'admin';
+export type NavSection = 'operations' | 'missions' | 'wallet' | 'approvals' | 'admin';
 
 export type DroneStatus = 'nominal' | 'warning' | 'critical' | 'grounded';
 
@@ -74,6 +74,60 @@ export interface SystemWidget {
   detail: string;
 }
 
+export type AuctionStatus = 'open' | 'awarded' | 'settled' | 'cancelled';
+
+export type ApprovalDecision = 'pending' | 'approved' | 'rejected';
+
+export interface CreditWallet {
+  id: string;
+  operatorName: string;
+  /** Spendable credits. */
+  balanceCredits: number;
+  /** Credits locked by outstanding bids or escrowed approvals. */
+  reservedCredits: number;
+}
+
+export interface AuctionBid {
+  id: string;
+  walletId: string;
+  bidder: string;
+  credits: number;
+  submittedIso: string;
+}
+
+export interface SlotAuction {
+  id: string;
+  slotName: string;
+  corridorZoneId: string;
+  windowStartIso: string;
+  windowEndIso: string;
+  reserveCredits: number;
+  status: AuctionStatus;
+  bids: AuctionBid[];
+  winningBidId: string | null;
+}
+
+export interface ApprovalRequest {
+  id: string;
+  missionName: string;
+  operator: string;
+  requestedAtIso: string;
+  status: ApprovalDecision;
+  riskLevel: RiskLevel;
+  /** Credits already escrowed by the operator when the request was filed. */
+  creditsEscrowed: number;
+  walletId: string;
+  reason: string;
+}
+
+export interface CreditLedgerEntry {
+  id: string;
+  walletId: string;
+  deltaCredits: number;
+  reason: string;
+  atIso: string;
+}
+
 export interface AppState {
   drones: Drone[];
   missions: Mission[];
@@ -81,6 +135,10 @@ export interface AppState {
   zones: AirspaceZone[];
   complianceWidgets: ComplianceWidget[];
   systemWidgets: SystemWidget[];
+  wallets: CreditWallet[];
+  auctions: SlotAuction[];
+  approvalRequests: ApprovalRequest[];
+  creditLedger: CreditLedgerEntry[];
   lastUpdatedIso: string;
 }
 

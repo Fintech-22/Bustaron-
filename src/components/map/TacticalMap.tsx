@@ -42,6 +42,7 @@ export function TacticalMap(): JSX.Element {
   const zones = useDashboardStore((state) => state.zones);
   const activeLayers = useDashboardStore((state) => state.activeLayers);
   const selectedDroneId = useDashboardStore((state) => state.selectedDroneId);
+  const plannedRoute = useDashboardStore((state) => state.plannedRoute);
   const selectDrone = useDashboardStore((state) => state.selectDrone);
   const toggleLayer = useDashboardStore((state) => state.toggleLayer);
   const tick = useDashboardStore((state) => state.tick);
@@ -52,7 +53,7 @@ export function TacticalMap(): JSX.Element {
         <div>
           <p className="panel__eyebrow">2D Hong Kong tactical map</p>
           <h2 id="tactical-map-title">Victoria Harbour operating picture</h2>
-          <p className="helper-text">Schematic only. No external tiles, live feeds, routing engine, or persistence in milestone 1.</p>
+          <p className="helper-text">Schematic 2D view. Zones from the active data source; dashed cyan line shows the planned A* route.</p>
         </div>
         <button type="button" className="control-button" onClick={tick}>
           <span aria-hidden="true">TICK</span> Advance mock tick
@@ -105,6 +106,16 @@ export function TacticalMap(): JSX.Element {
               strokeDasharray={mission.status === 'paused' ? '1.5 1' : '0'}
             />
           ))}
+          {plannedRoute && activeLayers.routes && (
+            <polyline
+              points={pointsToSvg(plannedRoute.waypoints)}
+              fill="none"
+              stroke="var(--color-cyan)"
+              strokeWidth="0.9"
+              strokeLinecap="round"
+              strokeDasharray="2 1.2"
+            />
+          )}
         </svg>
         {activeLayers.drones && drones.map((drone: Drone): JSX.Element => {
           const point: ProjectedPoint = projectPoint(drone.position);

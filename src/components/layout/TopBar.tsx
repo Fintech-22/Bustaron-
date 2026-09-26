@@ -12,6 +12,8 @@ interface TopBarProps {
 const sectionTitleById: Record<NavSection, string> = {
   operations: 'Operator tactical dashboard',
   missions: 'Mission queue and altitude controls',
+  wallet: 'Operator credit wallet',
+  approvals: 'Administrative approvals queue',
   admin: 'Administrative compliance overview',
 };
 

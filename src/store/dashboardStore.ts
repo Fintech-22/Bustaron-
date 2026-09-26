@@ -1,7 +1,22 @@
 import { create } from 'zustand';
 import { layerDefinitions } from '../data/mockData';
-import { mockDataService } from '../services/mockDataService';
-import type { AppState, Drone, LayerId, NavSection, UserRole } from '../types/domain';
+import type {
+  AppState,
+  ApprovalRequest,
+  CreditLedgerEntry,
+  Drone,
+  LayerId,
+  NavSection,
+  UserRole,
+} from '../types/domain';
+import { listBackends, resolveBackend } from '../services/dataBackends';
+import type { DataBackend } from '../services/dataBackend';
+import { awardAuction, decideApproval, placeBid } from '../services/creditsService';
+import { planRoute } from '../services/routePlanner';
+import type { PlannedRoute } from '../services/routePlanner';
+import { evaluateZonesAtPoint } from '../services/geo/pointInPolygon';
+import type { ZoneHit } from '../services/geo/pointInPolygon';
+import type { BackendId } from '../services/dataBackend';
 
 export interface DashboardStore extends AppState {
   activeRole: UserRole;
@@ -11,6 +26,14 @@ export interface DashboardStore extends AppState {
   emergencyMode: boolean;
   flightDraftOpen: boolean;
   altitudeBandM: [number, number];
+  /** Identifier of the data backend feeding the shell (M2 adapter seam). */
+  backendId: BackendId;
+  /** Route planned by the A* service for the flight draft, if any. */
+  plannedRoute: PlannedRoute | null;
+  /** Restricted-zone hits along the current flight draft origin. */
+  routeZoneHits: ZoneHit[];
+  /** Error message from the last failed action (planning, bidding, decisions). */
+  lastError: string | null;
   initialize: () => void;
   setRole: (role: UserRole) => void;
   navigate: (section: NavSection) => void;
@@ -22,9 +45,18 @@ export interface DashboardStore extends AppState {
   triggerEmergency: () => void;
   clearEmergency: () => void;
   tick: () => void;
+  /** Switches the data backend and reloads operational state through the adapter. */
+  setBackend: (id: BackendId) => void;
+  /** Places a credit bid on an open slot auction. */
+  bidOnAuction: (auctionId: string, walletId: string, credits: number) => void;
+  /** Awards an open auction to its current top bid, releasing losing reservations. */
+  awardTopBid: (auctionId: string) => void;
+  /** Approves or rejects a pending flight approval request. */
+  decideApprovalRequest: (requestId: string, decision: 'approved' | 'rejected') => void;
 }
 
-const initialState: AppState = mockDataService.loadInitialState();
+const initialBackend: DataBackend = resolveBackend('mock');
+const initialState: AppState = initialBackend.loadInitialState();
 
 const initialLayerState: Record<LayerId, boolean> = layerDefinitions.reduce(
   (layers: Record<LayerId, boolean>, layer): Record<LayerId, boolean> => ({
@@ -49,8 +81,13 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   emergencyMode: false,
   flightDraftOpen: false,
   altitudeBandM: [60, 160],
+  backendId: initialBackend.id,
+  plannedRoute: null,
+  routeZoneHits: [],
+  lastError: null,
   initialize: (): void => {
-    const loadedState: AppState = mockDataService.loadInitialState();
+    const backend: DataBackend = resolveBackend(get().backendId);
+    const loadedState: AppState = backend.loadInitialState();
     set({
       ...loadedState,
       selectedDroneId: loadedState.drones[0]?.id ?? '',
@@ -60,10 +97,20 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       emergencyMode: false,
       flightDraftOpen: false,
       altitudeBandM: [60, 160],
+      plannedRoute: null,
+      routeZoneHits: [],
+      lastError: null,
     });
   },
   setRole: (role: UserRole): void => {
-    const nextSection: NavSection = role === 'admin' ? 'admin' : 'operations';
+    const currentSection = get().activeSection;
+    const adminOnlySections: NavSection[] = ['admin', 'approvals'];
+    let nextSection: NavSection;
+    if (role === 'admin') {
+      nextSection = adminOnlySections.includes(currentSection) ? currentSection : 'admin';
+    } else {
+      nextSection = adminOnlySections.includes(currentSection) ? 'operations' : currentSection;
+    }
     set({ activeRole: role, activeSection: nextSection });
   },
   navigate: (section: NavSection): void => set({ activeSection: section }),
@@ -87,8 +134,9 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   triggerEmergency: (): void => set({ emergencyMode: true }),
   clearEmergency: (): void => set({ emergencyMode: false }),
   tick: (): void => {
+    const backend: DataBackend = resolveBackend(get().backendId);
     const current = get();
-    const nextState: AppState = mockDataService.simulateTick(current);
+    const nextState: AppState = backend.simulateTick(current);
     set({
       drones: nextState.drones,
       missions: nextState.missions,
@@ -96,7 +144,88 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       weatherAlerts: nextState.weatherAlerts,
       complianceWidgets: nextState.complianceWidgets,
       systemWidgets: nextState.systemWidgets,
+      wallets: nextState.wallets,
+      auctions: nextState.auctions,
+      approvalRequests: nextState.approvalRequests,
+      creditLedger: nextState.creditLedger,
       lastUpdatedIso: nextState.lastUpdatedIso,
     });
   },
+  setBackend: (id: BackendId): void => {
+    const backend: DataBackend = resolveBackend(id);
+    const loadedState: AppState = backend.loadInitialState();
+    set({
+      backendId: backend.id,
+      drones: loadedState.drones,
+      missions: loadedState.missions,
+      zones: loadedState.zones,
+      weatherAlerts: loadedState.weatherAlerts,
+      complianceWidgets: loadedState.complianceWidgets,
+      systemWidgets: loadedState.systemWidgets,
+      wallets: loadedState.wallets,
+      auctions: loadedState.auctions,
+      approvalRequests: loadedState.approvalRequests,
+      creditLedger: loadedState.creditLedger,
+      lastUpdatedIso: loadedState.lastUpdatedIso,
+      plannedRoute: null,
+      routeZoneHits: [],
+      lastError: null,
+    });
+  },
+  bidOnAuction: (auctionId: string, walletId: string, credits: number): void => {
+    const state = get();
+    try {
+      const result = placeBid(state.auctions, state.wallets, auctionId, walletId, credits, state.lastUpdatedIso);
+      set({ auctions: result.auctions, wallets: result.wallets, lastError: null });
+    } catch (error) {
+      set({ lastError: error instanceof Error ? error.message : 'Bid failed' });
+    }
+  },
+  awardTopBid: (auctionId: string): void => {
+    const state = get();
+    try {
+      const result = awardAuction(state.auctions, state.wallets, auctionId, state.lastUpdatedIso);
+      set({
+        auctions: result.auctions,
+        wallets: result.wallets,
+        creditLedger: [...state.creditLedger, ...result.ledgerEntries],
+        lastError: null,
+      });
+    } catch (error) {
+      set({ lastError: error instanceof Error ? error.message : 'Award failed' });
+    }
+  },
+  decideApprovalRequest: (requestId: string, decision: 'approved' | 'rejected'): void => {
+    const state = get();
+    try {
+      const result = decideApproval(state.approvalRequests, state.wallets, requestId, decision, state.lastUpdatedIso);
+      const nextApprovals: ApprovalRequest[] = state.approvalRequests.map((entry: ApprovalRequest): ApprovalRequest =>
+        entry.id === requestId ? result.approval : entry,
+      );
+      const nextLedger: CreditLedgerEntry[] = [...state.creditLedger, ...result.ledgerEntries];
+      set({ approvalRequests: nextApprovals, wallets: result.wallets, creditLedger: nextLedger, lastError: null });
+    } catch (error) {
+      set({ lastError: error instanceof Error ? error.message : 'Decision failed' });
+    }
+  },
 }));
+
+/** Convenience helper used by the planning UI: runs A* against current zones. */
+export function planDraftRoute(start: { lat: number; lng: number }, goal: { lat: number; lng: number }): void {
+  const zones = useDashboardStore.getState().zones;
+  try {
+    const route: PlannedRoute = planRoute(start, goal, { zones });
+    const hits: ZoneHit[] = evaluateZonesAtPoint(start, zones, 120);
+    useDashboardStore.setState({ plannedRoute: route, routeZoneHits: hits, lastError: null });
+  } catch (error) {
+    useDashboardStore.setState({
+      plannedRoute: null,
+      routeZoneHits: evaluateZonesAtPoint(start, zones, 120),
+      lastError: error instanceof Error ? error.message : 'Planning failed',
+    });
+  }
+}
+
+export function listAvailableBackends(): DataBackend[] {
+  return listBackends();
+}

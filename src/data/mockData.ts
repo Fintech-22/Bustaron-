@@ -1,4 +1,18 @@
-import type { AirspaceZone, AppState, ComplianceWidget, Drone, LayerDefinition, Mission, SystemWidget, WeatherAlert } from '../types/domain';
+import type {
+  AirspaceZone,
+  AppState,
+  ApprovalRequest,
+  AuctionBid,
+  ComplianceWidget,
+  CreditLedgerEntry,
+  CreditWallet,
+  Drone,
+  LayerDefinition,
+  Mission,
+  SlotAuction,
+  SystemWidget,
+  WeatherAlert,
+} from '../types/domain';
 
 export const layerDefinitions: LayerDefinition[] = [
   { id: 'drones', label: 'Drones', description: 'Active and grounded fleet markers' },
@@ -220,6 +234,77 @@ export const mockSystemWidgets: SystemWidget[] = [
   },
 ];
 
+export const mockWallets: CreditWallet[] = [
+  { id: 'wallet-harbour', operatorName: 'Harbour Ops Desk', balanceCredits: 480, reservedCredits: 40 },
+  { id: 'wallet-urban', operatorName: 'Urban Scan Team', balanceCredits: 260, reservedCredits: 0 },
+  { id: 'wallet-cargo', operatorName: 'Cargo Pilot Cell', balanceCredits: 640, reservedCredits: 120 },
+];
+
+const mockBidsHarbour: AuctionBid[] = [
+  { id: 'bid-harbour-1', walletId: 'wallet-harbour', bidder: 'Harbour Ops Desk', credits: 40, submittedIso: '2026-09-24T12:40:00.000Z' },
+  { id: 'bid-harbour-2', walletId: 'wallet-cargo', bidder: 'Cargo Pilot Cell', credits: 120, submittedIso: '2026-09-24T12:46:00.000Z' },
+];
+
+const mockBidsUrban: AuctionBid[] = [
+  { id: 'bid-urban-1', walletId: 'wallet-urban', bidder: 'Urban Scan Team', credits: 65, submittedIso: '2026-09-24T12:51:00.000Z' },
+];
+
+export const mockAuctions: SlotAuction[] = [
+  {
+    id: 'auction-vh-morning',
+    slotName: 'Victoria Harbour corridor · morning window',
+    corridorZoneId: 'zone-harbour-corridor',
+    windowStartIso: '2026-09-25T01:00:00.000Z',
+    windowEndIso: '2026-09-25T04:00:00.000Z',
+    reserveCredits: 30,
+    status: 'open',
+    bids: mockBidsHarbour,
+    winningBidId: null,
+  },
+  {
+    id: 'auction-cbd-evening',
+    slotName: 'Central district façade slot · evening window',
+    corridorZoneId: 'zone-govt-hq',
+    windowStartIso: '2026-09-25T10:00:00.000Z',
+    windowEndIso: '2026-09-25T12:00:00.000Z',
+    reserveCredits: 50,
+    status: 'open',
+    bids: mockBidsUrban,
+    winningBidId: null,
+  },
+];
+
+export const mockApprovalRequests: ApprovalRequest[] = [
+  {
+    id: 'approval-kt-19',
+    missionName: 'Kowloon East logistics corridor',
+    operator: 'Cargo Pilot Cell',
+    requestedAtIso: '2026-09-24T12:30:00.000Z',
+    status: 'pending',
+    riskLevel: 'low',
+    creditsEscrowed: 40,
+    walletId: 'wallet-cargo',
+    reason: 'Scheduled resupply run inside approved corridor altitude band.',
+  },
+  {
+    id: 'approval-cbd-04',
+    missionName: 'Central district façade survey',
+    operator: 'Urban Scan Team',
+    requestedAtIso: '2026-09-24T12:55:00.000Z',
+    status: 'pending',
+    riskLevel: 'high',
+    creditsEscrowed: 80,
+    walletId: 'wallet-urban',
+    reason: 'Facade survey adjacent to the Central Government Complex RFZ.',
+  },
+];
+
+export const mockCreditLedger: CreditLedgerEntry[] = [
+  { id: 'ledger-seed-harbour', walletId: 'wallet-harbour', deltaCredits: 40, reason: 'Escrow for Victoria Harbour morning bid', atIso: '2026-09-24T12:40:00.000Z' },
+  { id: 'ledger-seed-cargo', walletId: 'wallet-cargo', deltaCredits: 120, reason: 'Escrow for Victoria Harbour morning bid', atIso: '2026-09-24T12:46:00.000Z' },
+  { id: 'ledger-seed-urban', walletId: 'wallet-urban', deltaCredits: 65, reason: 'Escrow for Central district evening bid', atIso: '2026-09-24T12:51:00.000Z' },
+];
+
 export const initialMockState: AppState = {
   drones: mockDrones,
   missions: mockMissions,
@@ -227,5 +312,9 @@ export const initialMockState: AppState = {
   zones: mockZones,
   complianceWidgets: mockComplianceWidgets,
   systemWidgets: mockSystemWidgets,
+  wallets: mockWallets,
+  auctions: mockAuctions,
+  approvalRequests: mockApprovalRequests,
+  creditLedger: mockCreditLedger,
   lastUpdatedIso: '2026-09-24T13:35:00.000Z',
 };

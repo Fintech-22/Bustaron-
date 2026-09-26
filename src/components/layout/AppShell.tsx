@@ -3,6 +3,8 @@ import { EmptyState } from '../common/EmptyState';
 import { MetricCard } from '../common/MetricCard';
 import { TacticalMap } from '../map/TacticalMap';
 import { AdminPanel } from '../panels/AdminPanel';
+import { ApprovalsQueuePanel } from '../panels/ApprovalsQueuePanel';
+import { CreditWalletPanel } from '../panels/CreditWalletPanel';
 import { MissionPanel } from '../panels/MissionPanel';
 import { StatusPanel } from '../panels/StatusPanel';
 import { useDashboardStore } from '../../store/dashboardStore';
@@ -64,18 +66,20 @@ export function AppShell(): JSX.Element {
             </div>
             {activeSection === 'operations' && <TacticalMap />}
             {activeSection === 'missions' && <MissionPanel expanded />}
+            {activeSection === 'wallet' && <CreditWalletPanel />}
+            {activeSection === 'approvals' && activeRole === 'admin' && <ApprovalsQueuePanel expanded />}
             {activeSection === 'admin' && activeRole === 'admin' && <AdminPanel expanded />}
-            {activeSection === 'admin' && activeRole !== 'admin' && (
+            {(activeSection === 'admin' || activeSection === 'approvals') && activeRole !== 'admin' && (
               <EmptyState
                 title="Admin role required"
-                message="Switch to Admin in the top bar to view compliance and system controls."
+                message="Switch to Admin in the top bar to view the approvals queue and compliance controls."
               />
             )}
           </section>
           <aside className="panel-stack" aria-label="Context panels">
             <StatusPanel />
-            {activeSection !== 'missions' && <MissionPanel />}
-            {activeRole === 'admin' && activeSection !== 'admin' && <AdminPanel />}
+            {activeSection !== 'missions' && activeSection !== 'wallet' && <MissionPanel />}
+            {activeRole === 'admin' && activeSection !== 'admin' && activeSection !== 'approvals' && <AdminPanel />}
           </aside>
         </main>
       </div>
