@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
+import { EmptyState } from '../common/EmptyState';
 import { planDraftRoute, useDashboardStore } from '../../store/dashboardStore';
 import type { Mission, MissionStatus, RiskLevel } from '../../types/domain';
 import type { ZoneHit } from '../../services/geo/pointInPolygon';
@@ -75,10 +76,10 @@ export function MissionPanel({ expanded = false }: MissionPanelProps): JSX.Eleme
       </div>
 
       {flightDraftOpen && (
-        <div className="status-item" role="status" aria-live="polite" style={{ marginBottom: '0.85rem' }}>
+        <div className="status-item spaced-bottom" role="status" aria-live="polite">
           <strong>New Flight draft is open.</strong>
           <p className="helper-text">A* planning runs against the active data source's zones; nothing is persisted.</p>
-          <div className="route-controls" role="group" aria-label="Route planner controls" style={{ marginTop: '0.6rem' }}>
+          <div className="route-controls spaced-top" role="group" aria-label="Route planner controls">
             <label className="label-text" htmlFor="route-origin">Origin</label>
             <select id="route-origin" value={originName} onChange={(event) => setOriginName(event.target.value)}>
               {draftLocations.map((entry) => (
@@ -94,6 +95,7 @@ export function MissionPanel({ expanded = false }: MissionPanelProps): JSX.Eleme
             <button
               type="button"
               className="control-button"
+              disabled={originName === destinationName}
               onClick={() => planDraftRoute(origin.point, destination.point)}
             >
               Plan A* route
@@ -108,15 +110,19 @@ export function MissionPanel({ expanded = false }: MissionPanelProps): JSX.Eleme
             </p>
           )}
           {lastError && (
-            <p role="alert" className="helper-text" style={{ color: 'var(--color-red)' }}>
-              {lastError}
-            </p>
+            <EmptyState
+              compact
+              headingLevel={3}
+              variant="error"
+              title="Route planning failed"
+              message={lastError}
+            />
           )}
           {routeZoneHits.length > 0 && <ZoneHitList hits={routeZoneHits} />}
         </div>
       )}
 
-      <div className="altitude-control" style={{ marginBottom: '0.9rem' }}>
+      <div className="altitude-control spaced-bottom--lg">
         <label className="label-text" htmlFor="altitude-upper">Shared altitude ceiling: {altitudeBandM[1]} m</label>
         <input
           id="altitude-upper"
@@ -129,24 +135,33 @@ export function MissionPanel({ expanded = false }: MissionPanelProps): JSX.Eleme
         />
       </div>
 
-      <ul className="mission-list" aria-label="Mock missions">
-        {missions.map((mission: Mission): JSX.Element => (
-          <li key={mission.id} className="mission-item">
-            <div className="mission-row">
-              <strong>{mission.name}</strong>
-              <span
-                className="badge"
-                style={{ '--badge-color': riskColorByName[mission.riskLevel], '--badge-border': riskColorByName[mission.riskLevel] } as CSSProperties}
-              >
-                {mission.riskLevel} risk
-              </span>
-            </div>
-            <p className="helper-text">
-              {mission.operator} · {missionStatusLabelByName[mission.status]} · {mission.altitudeWindowM[0]}-{mission.altitudeWindowM[1]} m
-            </p>
-          </li>
-        ))}
-      </ul>
+      {missions.length === 0 ? (
+        <EmptyState
+          compact
+          headingLevel={3}
+          title="No missions in the queue"
+          message="Filed flight requests appear here once an operator submits them for the active data source."
+        />
+      ) : (
+        <ul className="mission-list" aria-label="Mock missions">
+          {missions.map((mission: Mission): JSX.Element => (
+            <li key={mission.id} className="mission-item">
+              <div className="mission-row">
+                <strong>{mission.name}</strong>
+                <span
+                  className="badge"
+                  style={{ '--badge-color': riskColorByName[mission.riskLevel], '--badge-border': riskColorByName[mission.riskLevel] } as CSSProperties}
+                >
+                  {mission.riskLevel} risk
+                </span>
+              </div>
+              <p className="helper-text">
+                {mission.operator} · {missionStatusLabelByName[mission.status]} · {mission.altitudeWindowM[0]}-{mission.altitudeWindowM[1]} m
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

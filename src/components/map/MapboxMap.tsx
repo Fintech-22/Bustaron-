@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { EmptyState } from '../common/EmptyState';
 import { MAPBOX_STYLE, MAPBOX_TOKEN } from '../../services/mapboxConfig';
 
 const HONG_KONG_CENTER: [number, number] = [114.158, 22.285];
@@ -52,13 +53,36 @@ export function MapboxMap(): JSX.Element {
         </div>
       </div>
       <div className="map-canvas">
+        {/*
+          Labelled group, not role="img": Mapbox injects its own controls and
+          attribution links into this container, and role="img" would make them
+          unreachable to assistive technology.
+        */}
         <div
           ref={containerRef}
           className="mapbox-canvas"
           data-mapbox-state={status}
-          role="img"
-          aria-label="Mapbox Hong Kong base map centred on Victoria Harbour"
+          role="group"
+          aria-label="Interactive Mapbox base map of Hong Kong centred on Victoria Harbour"
         />
+        {status === 'idle' && (
+          <div className="map-loading">
+            <EmptyState
+              variant="loading"
+              title="Loading base map"
+              message="Requesting Mapbox tiles for the Victoria Harbour operating area."
+            />
+          </div>
+        )}
+        {status === 'sdk-missing' && (
+          <div className="map-loading">
+            <EmptyState
+              variant="error"
+              title="Base map unavailable"
+              message="The Mapbox SDK could not be loaded (offline or blocked). The offline SVG tactical map remains available."
+            />
+          </div>
+        )}
       </div>
     </section>
   );

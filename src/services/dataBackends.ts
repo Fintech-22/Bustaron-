@@ -62,14 +62,26 @@ export class MockBackend implements DataBackend {
 
 /**
  * CAD GeoJSON backend: the ingested CAD RFZ pack replaces the three schematic
- * mock zones with 135 real CAD-designated polygons; fleet, missions and
+ * mock zones with the real CAD-designated polygons; fleet, missions and
  * weather remain the mock replay until M3 wires live feeds.
  */
 export class CadGeoJsonBackend implements DataBackend {
   readonly id = 'cad-geojson' as const;
-  readonly label = 'CAD RFZ GeoJSON (135 zones)';
   readonly offlineCapable = true;
   readonly usesIngestedGeodata = true;
+
+  private cachedZoneCount: number | undefined;
+
+  /**
+   * Zone count is derived from the data rather than hardcoded, so regenerating
+   * `cadRfzData.json` can never leave a stale count in the UI again.
+   */
+  get label(): string {
+    if (this.cachedZoneCount === undefined) {
+      this.cachedZoneCount = loadCadZones().length;
+    }
+    return `CAD RFZ GeoJSON (${this.cachedZoneCount} zones)`;
+  }
 
   private readonly mockService = new MockDataService();
 

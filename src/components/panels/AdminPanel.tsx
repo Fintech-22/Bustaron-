@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { EmptyState } from '../common/EmptyState';
 import { useDashboardStore } from '../../store/dashboardStore';
 import type { ComplianceWidget, RiskLevel, SystemWidget } from '../../types/domain';
 
@@ -33,36 +34,47 @@ export function AdminPanel({ expanded = false }: AdminPanelProps): JSX.Element {
         )}
       </div>
 
-      <div className="admin-grid" aria-label="Compliance status widgets">
-        {complianceWidgets.map((widget: ComplianceWidget): JSX.Element => (
-          <article key={widget.id} className="admin-item">
-            <div className="admin-row">
-              <span aria-hidden="true">SAFE</span>
-              <span
-                className="badge"
-                style={{ '--badge-color': riskColorByName[widget.status], '--badge-border': riskColorByName[widget.status] } as CSSProperties}
-              >
-                {widget.status}
-              </span>
-            </div>
-            <h3 className="panel__title">{widget.title}</h3>
-            <strong>{widget.value}</strong>
-            <p className="helper-text">{widget.detail}</p>
-          </article>
-        ))}
-      </div>
+      {complianceWidgets.length === 0 && systemWidgets.length === 0 ? (
+        <EmptyState
+          compact
+          headingLevel={3}
+          title="No compliance signals"
+          message="Compliance and system widgets appear here once the active data source reports them."
+        />
+      ) : (
+        <>
+          <div className="admin-grid" aria-label="Compliance status widgets">
+            {complianceWidgets.map((widget: ComplianceWidget): JSX.Element => (
+              <article key={widget.id} className="admin-item">
+                <div className="admin-row">
+                  <span aria-hidden="true">SAFE</span>
+                  <span
+                    className="badge"
+                    style={{ '--badge-color': riskColorByName[widget.status], '--badge-border': riskColorByName[widget.status] } as CSSProperties}
+                  >
+                    {widget.status}
+                  </span>
+                </div>
+                <h3 className="panel__title">{widget.title}</h3>
+                <strong>{widget.value}</strong>
+                <p className="helper-text">{widget.detail}</p>
+              </article>
+            ))}
+          </div>
 
-      <ul className="admin-list" aria-label="System widgets" style={{ marginTop: '0.9rem' }}>
-        {systemWidgets.map((widget: SystemWidget): JSX.Element => (
-          <li key={widget.id} className="admin-item">
-            <div className="admin-row">
-              <span><span aria-hidden="true">SYS</span> {widget.title}</span>
-              <strong>{widget.value}</strong>
-            </div>
-            <p className="helper-text">{widget.detail}</p>
-          </li>
-        ))}
-      </ul>
+          <ul className="admin-list spaced-top--lg" aria-label="System widgets">
+            {systemWidgets.map((widget: SystemWidget): JSX.Element => (
+              <li key={widget.id} className="admin-item">
+                <div className="admin-row">
+                  <span><span aria-hidden="true">SYS</span> {widget.title}</span>
+                  <strong>{widget.value}</strong>
+                </div>
+                <p className="helper-text">{widget.detail}</p>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </section>
   );
 }

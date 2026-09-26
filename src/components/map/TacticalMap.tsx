@@ -53,15 +53,30 @@ export function TacticalMap(): JSX.Element {
         <div>
           <p className="panel__eyebrow">2D Hong Kong tactical map</p>
           <h2 id="tactical-map-title">Victoria Harbour operating picture</h2>
-          <p className="helper-text">Schematic 2D view. Zones from the active data source; dashed cyan line shows the planned A* route.</p>
+          <p className="helper-text" id="tactical-map-description">Schematic 2D view. Zones from the active data source; dashed cyan line shows the planned A* route.</p>
         </div>
         <button type="button" className="control-button" onClick={tick}>
           <span aria-hidden="true">TICK</span> Advance mock tick
         </button>
       </div>
       <MapLayerControls activeLayers={activeLayers} onToggleLayer={toggleLayer} />
-      <div className="map-canvas" role="img" aria-label="Schematic Hong Kong tactical map with selectable drone markers">
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      {/*
+        The container is a labelled group, not role="img": the SVG below carries the
+        graphic semantics, while the drone buttons stay siblings so keyboard and
+        screen-reader users can reach and select every aircraft.
+      */}
+      <div
+        className="map-canvas"
+        role="group"
+        aria-label="Schematic Hong Kong tactical map with selectable drone markers"
+        aria-describedby="tactical-map-description"
+      >
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          role="img"
+          aria-label="Schematic Hong Kong geography: Kowloon, Victoria Harbour and Hong Kong Island, with restricted zones, weather cells and mission routes."
+        >
           <defs>
             <pattern id="fine-grid" width="10" height="10" patternUnits="userSpaceOnUse">
               <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(148,163,184,0.14)" strokeWidth="0.16" />

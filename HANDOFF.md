@@ -3,6 +3,17 @@
 > Purpose: let any new AI/engineer resume **without re-reading the whole project**.
 > Last updated: 2026-09-26 16:10 GMT+8 — **M2 complete, gates green.**
 
+> ## ⚠️ READ `VERIFICATION_REPORT.md` BEFORE STARTING M3
+> Independently verified 2026-09-26 17:10: all gate claims are **true** (tsc 0,
+> eslint 0, vite build 0, vitest 48/48), but **`src/data/cadRfzData.json` has two
+> real defects the tests do not catch**:
+> 1. `compact_ring()` in `scripts/generate_cad_data.py` destroys ring order →
+>    self-intersecting zigzag rings → **40 of 135 zones (29.6%) fail their own
+>    centroid containment test**.
+> 2. Perimeter-based dedupe silently **drops 151 of 286 source zones (53%)**.
+>
+> Fix both and regenerate the data before building any M3 geospatial logic on top.
+
 ---
 
 ## 1. Project identity
@@ -46,12 +57,19 @@ B="C:/Users/user/AppData/Local/Programs/@codebufffreebuff-desktop/resources/bun/
 "$B" node_modules/vite/bin/vite.js --host 0.0.0.0        # dev server
 ```
 
-**There is NO Node.js on this machine.** The `node_modules/.bin` shims exec
-`node`, which is not on PATH. The runtime available here is the Freebuff
-desktop's bundled **bun 1.4.2** at the path above — run each tool's JS entry
-point through it directly (see the commands). Verified working: tsc, vite,
-eslint, vitest.
-Typical direct-binary timings: tsc <10 s, vite build ~19–45 s, vitest ~13–35 s.
+**Node may be missing from PATH in your process — prefer bun anyway.** The
+`node_modules/.bin` shims exec `node`; if it is not on PATH they fail with
+`node: not found`. The reliable route is the Freebuff desktop's bundled
+**bun 1.4.2** at the path above — run each tool's JS entry point through it
+directly (see the commands). Verified working: tsc, vite, eslint, vitest.
+
+> Correction (verified 2026-09-26): Node **does** exist on this machine at
+> `C:\Users\user\.workbuddy-ai\binaries\node\versions\24.14.0\node` (v24.14.0),
+> and the `.bin` shims work in environments that have it on PATH. The
+> "no Node.js" statement is true only for processes with a restricted PATH.
+> Keep using bun — it always works — but don't go hunting for a missing runtime.
+
+Typical direct-binary timings: tsc <10 s, vite build ~2–45 s, vitest ~4–35 s.
 **Do not run `npm install`** — `node_modules` is already complete (241 packages). A re-install triggers the destructive guard described in §4.
 
 ---

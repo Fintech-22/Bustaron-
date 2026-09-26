@@ -1,5 +1,6 @@
 import type { NavSection, UserRole } from '../../types/domain';
 import { useDashboardStore } from '../../store/dashboardStore';
+import { resolveBackend } from '../../services/dataBackends';
 
 interface TopBarProps {
   activeRole: UserRole;
@@ -26,9 +27,7 @@ export function TopBar({
   onRoleChange,
   onEmergency,
 }: TopBarProps): JSX.Element {
-  const backendLabel = useDashboardStore((state) =>
-    state.backendId === 'cad-geojson' ? 'CAD RFZ GeoJSON (135 zones)' : 'Mock replay',
-  );
+  const backendLabel = useDashboardStore((state) => resolveBackend(state.backendId).label);
   const updatedAt: string = new Intl.DateTimeFormat('en-HK', {
     hour: '2-digit',
     minute: '2-digit',

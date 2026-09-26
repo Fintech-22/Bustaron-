@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { EmptyState } from '../common/EmptyState';
 import { useDashboardStore } from '../../store/dashboardStore';
 import type { Drone, DroneStatus } from '../../types/domain';
 
@@ -38,26 +39,35 @@ export function StatusPanel(): JSX.Element {
         </div>
         <span className="badge" style={{ '--badge-color': 'var(--color-radar)' } as CSSProperties}>Mock live</span>
       </div>
-      <ul className="status-list" aria-label="Drone status list">
-        {drones.map((drone: Drone): JSX.Element => (
-          <li className="status-item" key={drone.id}>
-            <div className="status-row">
-              <button type="button" className="link-button" onClick={() => selectDrone(drone.id)} aria-pressed={selectedDroneId === drone.id}>
-                {drone.callsign}
-              </button>
-              <span
-                className="badge"
-                style={{ '--badge-color': statusColorByName[drone.status], '--badge-border': statusColorByName[drone.status] } as CSSProperties}
-              >
-                {statusIconByName[drone.status]} {statusLabelByName[drone.status]}
-              </span>
-            </div>
-            <p className="helper-text">Battery {drone.batteryPct}% · Alt {drone.altitudeM} m · {drone.speedKph} kph</p>
-          </li>
-        ))}
-      </ul>
+      {drones.length === 0 ? (
+        <EmptyState
+          compact
+          headingLevel={3}
+          title="No aircraft reporting"
+          message="No drones are broadcasting telemetry for the active data source. Advance a mock tick or switch data source."
+        />
+      ) : (
+        <ul className="status-list" aria-label="Drone status list">
+          {drones.map((drone: Drone): JSX.Element => (
+            <li className="status-item" key={drone.id}>
+              <div className="status-row">
+                <button type="button" className="link-button" onClick={() => selectDrone(drone.id)} aria-pressed={selectedDroneId === drone.id}>
+                  {drone.callsign}
+                </button>
+                <span
+                  className="badge"
+                  style={{ '--badge-color': statusColorByName[drone.status], '--badge-border': statusColorByName[drone.status] } as CSSProperties}
+                >
+                  {statusIconByName[drone.status]} {statusLabelByName[drone.status]}
+                </span>
+              </div>
+              <p className="helper-text">Battery {drone.batteryPct}% · Alt {drone.altitudeM} m · {drone.speedKph} kph</p>
+            </li>
+          ))}
+        </ul>
+      )}
       {selectedDrone && (
-        <dl className="drone-detail-grid" aria-label={`Selected drone ${selectedDrone.callsign} details`} style={{ marginTop: '0.85rem' }}>
+        <dl className="drone-detail-grid spaced-top" aria-label={`Selected drone ${selectedDrone.callsign} details`}>
           <div className="detail-card"><dt>Selected craft</dt><dd>{selectedDrone.callsign}</dd></div>
           <div className="detail-card"><dt>Mission</dt><dd>{selectedDrone.missionId}</dd></div>
           <div className="detail-card"><dt>Position</dt><dd>{selectedDrone.position.lat.toFixed(3)}, {selectedDrone.position.lng.toFixed(3)}</dd></div>

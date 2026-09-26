@@ -1,0 +1,45 @@
+{
+  "url": "http://127.0.0.1:4174",
+  "tag": "step2-verify",
+  "capturedAt": "2026-09-26T09:42:03.500Z",
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "shots": [
+    {
+      "name": "01-operator-desktop-1440",
+      "file": "screenshots\\2026-09-26T09-41-51-step2-verify\\01-operator-desktop-1440.png",
+      "note": "1440x900"
+    },
+    {
+      "name": "01-operator-laptop-1024",
+      "file": "screenshots\\2026-09-26T09-41-51-step2-verify\\01-operator-laptop-1024.png",
+      "note": "1024x800"
+    },
+    {
+      "name": "01-operator-tablet-768",
+      "file": "screenshots\\2026-09-26T09-41-51-step2-verify\\01-operator-tablet-768.png",
+      "note": "768x1024"
+    },
+    {
+      "name": "01-operator-mobile-320",
+      "file": "screenshots\\2026-09-26T09-41-51-step2-verify\\01-operator-mobile-320.png",
+      "note": "320x720"
+    },
+    {
+      "name": "02-admin",
+      "file": "screenshots\\2026-09-26T09-41-51-step2-verify\\02-admin.png",
+      "note": "clicked Admin"
+    },
+    {
+      "name": "03-focus-ring",
+      "file": "screenshots\\2026-09-26T09-41-51-step2-verify\\03-focus-ring.png",
+      "note": "after 3x Tab"
+    },
+    {
+      "name": "04-layers-off",
+      "file": "screenshots\\2026-09-26T09-41-51-step2-verify\\04-layers-off.png",
+      "note": "toggled 5 layer buttons"
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { EmptyState } from '../common/EmptyState';
 import { useDashboardStore } from '../../store/dashboardStore';
 import type { ApprovalDecision, ApprovalRequest, RiskLevel } from '../../types/domain';
 
@@ -17,7 +18,6 @@ const decisionLabelByName: Record<ApprovalDecision, string> = {
 
 function ApprovalRow({ request }: { request: ApprovalRequest }): JSX.Element {
   const decideApprovalRequest = useDashboardStore((state) => state.decideApprovalRequest);
-  const lastError = useDashboardStore((state) => state.lastError);
 
   return (
     <li className="status-item" aria-label={`Approval request ${request.missionName}`}>
@@ -48,11 +48,6 @@ function ApprovalRow({ request }: { request: ApprovalRequest }): JSX.Element {
           Decision: <strong>{decisionLabelByName[request.status]}</strong>
         </p>
       )}
-      {lastError && (
-        <p role="alert" className="helper-text" style={{ color: 'var(--color-red)' }}>
-          {lastError}
-        </p>
-      )}
     </li>
   );
 }
@@ -77,7 +72,12 @@ export function ApprovalsQueuePanel({ expanded = false }: { expanded?: boolean }
       </div>
 
       {approvalRequests.length === 0 ? (
-        <p className="helper-text">No approval requests filed.</p>
+        <EmptyState
+          compact
+          headingLevel={3}
+          title="No approval requests"
+          message="Escrowed flight requests filed by operators appear here for review."
+        />
       ) : (
         <ul className="status-list" aria-label="Approval requests">
           {approvalRequests.map((request: ApprovalRequest) => (
@@ -87,12 +87,16 @@ export function ApprovalsQueuePanel({ expanded = false }: { expanded?: boolean }
       )}
 
       {lastError && (
-        <p role="alert" className="helper-text" style={{ color: 'var(--color-red)' }}>
-          {lastError}
-        </p>
+        <EmptyState
+          compact
+          headingLevel={3}
+          variant="error"
+          title="Approval action failed"
+          message={lastError}
+        />
       )}
       {expanded && (
-        <p className="helper-text" style={{ marginTop: '0.75rem' }}>
+        <p className="helper-text spaced-top">
           Approving burns the escrowed credits; rejecting refunds them to the operator wallet. Every decision is
           appended to the credit ledger for the M3 audit trail.
         </p>

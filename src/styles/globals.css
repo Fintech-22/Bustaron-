@@ -2,8 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =============================================================================
+   BUSTARON design tokens
+   -----------------------------------------------------------------------------
+   Single source of truth for spacing, type, radius, layout and effects.
+   Components must reference these custom properties instead of magic values.
+
+   Responsive tiers (mobile-first, per docs/system_design.md §1):
+     base  >= 320px  single column, sidebar stacked on top
+     >= 768px        tablet: sidebar on top, 3-column nav, 2-column metrics
+     >= 1024px       desktop: sidebar rail, 2-column dashboard, 4-column metrics
+     >= 1440px       wide desktop: larger rail + wider context column
+   Media queries cannot consume custom properties, so the four tier values are
+   written literally in the queries below and mirrored in this comment.
+   ========================================================================== */
 :root {
   color-scheme: dark;
+
+  /* --- Colour: dark tactical identity (unchanged palette) --- */
   --color-bg: #05080c;
   --color-bg-elevated: #09111b;
   --color-panel: #0d1724;
@@ -20,6 +36,69 @@
   --color-blue: #60a5fa;
   --color-purple: #c084fc;
   --shadow-panel: 0 18px 50px rgba(0, 0, 0, 0.36);
+
+  /* --- Spacing scale: 0.25rem increments (4px base unit) --- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 1.75rem;
+  --space-8: 2rem;
+
+  /* --- Type scale: numeric ramp (1 step ~ 1.15x) --- */
+  --font-size-2xs: 0.68rem;
+  --font-size-xs: 0.72rem;
+  --font-size-sm: 0.78rem;
+  --font-size-md: 0.85rem;
+  --font-size-lg: 1rem;
+  --font-size-xl: 1.15rem;
+  --font-size-2xl: 1.35rem;
+  --font-size-h1: clamp(1.35rem, 2.4vw, 2.1rem);
+
+  /* --- Type roles: h1 page title / h2 section / h3 subsection / body / small --- */
+  --font-size-body: var(--font-size-lg);
+  --font-size-h2: var(--font-size-xl);
+  --font-size-h3: var(--font-size-lg);
+  --font-size-small: var(--font-size-sm);
+  --line-height-tight: 1.1;
+  --line-height-heading: 1.3;
+  --font-family-body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-family-mono: "JetBrains Mono", Consolas, monospace;
+
+  /* --- Corner radii --- */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-pill: 999px;
+
+  /* --- Layout dimensions --- */
+  --sidebar-width: 15rem;
+  --sidebar-width-wide: 17rem;
+  --panel-column-width: 20rem;
+  --panel-column-width-wide: 23rem;
+  --map-min-height: 27rem;
+  --map-min-height-md: 30rem;
+  --map-min-height-lg: 34rem;
+  --empty-state-min-height: 14rem;
+  --empty-state-max-width: 34rem;
+
+  /* --- Component dimensions --- */
+  --brand-mark-size: 2.5rem;
+  --drone-marker-size: 2.35rem;
+  --drone-callsign-offset: 2.4rem;
+  --provider-badge-offset: 4.4rem;
+
+  /* --- Effects: focus, motion, elevation --- */
+  --focus-ring-width: 3px;
+  --focus-ring-offset: 3px;
+  --focus-ring-color: rgba(74, 222, 128, 0.86);
+  --transition-fast: 160ms ease;
+  --shadow-marker-glow: 0 0 0 0.35rem rgba(74, 222, 128, 0.12);
+  --shadow-marker-hover: 0 0 0 0.4rem rgba(56, 189, 248, 0.16);
+  --shadow-marker-selected: 0 0 0 0.45rem rgba(56, 189, 248, 0.2), 0 0 1.25rem var(--marker-color);
+  --shadow-text: 0 1px 5px #000;
 }
 
 * {
@@ -39,7 +118,8 @@ body {
     radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent 34rem),
     linear-gradient(135deg, #05080c 0%, #08111d 48%, #05080c 100%);
   color: var(--color-text);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-family-body);
+  font-size: var(--font-size-body);
   text-rendering: optimizeLegibility;
 }
 
@@ -55,45 +135,64 @@ button {
 
 button:disabled {
   cursor: not-allowed;
-  opacity: 0.58;
+  opacity: 0.5;
 }
 
+/* Focus: a single visible ring for every focusable control (WCAG 2.4.7 / AA). */
 :focus-visible {
-  outline: 3px solid rgba(74, 222, 128, 0.86);
-  outline-offset: 3px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* Typography hierarchy — never skip levels; h1 is the single page title. */
+h1 {
+  font-size: var(--font-size-h1);
+  line-height: var(--line-height-tight);
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  line-height: var(--line-height-heading);
+}
+
+h3 {
+  font-size: var(--font-size-h3);
+  line-height: var(--line-height-heading);
 }
 
 #root {
   min-height: 100vh;
 }
 
+/* --- Shell: single column by default (mobile), sidebar rail from 1024px --- */
 .app-shell {
   display: grid;
-  grid-template-columns: 17rem minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   min-height: 100vh;
 }
 
 .sidebar {
-  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
   background: rgba(6, 13, 22, 0.94);
-  padding: 1rem;
+  padding: var(--space-4);
 }
 
 .sidebar__brand {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0.5rem 1rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--color-border);
 }
 
 .brand-mark {
   display: grid;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: var(--brand-mark-size);
+  height: var(--brand-mark-size);
   place-items: center;
   border: 1px solid rgba(74, 222, 128, 0.6);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-md);
   background: rgba(74, 222, 128, 0.1);
   color: var(--color-radar);
   font-weight: 800;
@@ -101,7 +200,7 @@ button:disabled {
 
 .sidebar__title {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--font-size-lg);
   letter-spacing: 0.08em;
 }
 
@@ -109,17 +208,21 @@ button:disabled {
 .label-text,
 .helper-text {
   color: var(--color-muted);
-  font-size: 0.78rem;
+  font-size: var(--font-size-small);
 }
 
 .nav-group {
-  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+  margin-top: var(--space-4);
 }
 
 .nav-group__label {
-  margin: 0 0 0.5rem;
+  grid-column: 1 / -1;
+  margin: 0 0 var(--space-2);
   color: var(--color-subtle);
-  font-size: 0.72rem;
+  font-size: var(--font-size-xs);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -133,19 +236,22 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
+  /* Keep short action labels ("New Flight", "Emergency hold") on one line; the
+     header container wraps instead. */
+  white-space: nowrap;
   border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-md);
   background: rgba(15, 23, 42, 0.72);
   color: var(--color-text);
-  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+  transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
 
 .nav-button {
   width: 100%;
-  justify-content: flex-start;
-  margin-bottom: 0.5rem;
-  padding: 0.75rem;
+  justify-content: center;
+  margin-bottom: 0;
+  padding: var(--space-3);
   text-align: left;
 }
 
@@ -166,28 +272,38 @@ button:disabled {
   color: #f1f5f9;
 }
 
+/* Explicit disabled state for every button variant. */
+.nav-button:disabled,
+.role-button:disabled,
+.layer-toggle:disabled,
+.control-button:disabled,
+.link-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  border-color: var(--color-border);
+  background: rgba(15, 23, 42, 0.4);
+  transform: none;
+}
+
 .app-main {
   min-width: 0;
 }
 
 .top-bar {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 1rem 1.25rem;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--color-border);
   background: rgba(8, 15, 25, 0.78);
   backdrop-filter: blur(18px);
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  position: static;
 }
 
 .top-bar h1 {
   margin: 0;
-  font-size: clamp(1.35rem, 2.4vw, 2.1rem);
-  line-height: 1.1;
 }
 
 .top-bar__meta,
@@ -198,13 +314,13 @@ button:disabled {
 .drone-detail-grid,
 .admin-grid {
   display: flex;
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
 
 .top-bar__meta {
   flex-wrap: wrap;
   color: var(--color-muted);
-  font-size: 0.85rem;
+  font-size: var(--font-size-md);
 }
 
 .role-switcher {
@@ -214,14 +330,14 @@ button:disabled {
 .role-button,
 .control-button,
 .link-button {
-  padding: 0.65rem 0.8rem;
+  padding: var(--space-3) var(--space-4);
 }
 
 .dashboard-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 23rem;
-  gap: 1rem;
-  padding: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-3);
 }
 
 .map-column,
@@ -231,7 +347,7 @@ button:disabled {
 
 .panel-stack {
   display: grid;
-  gap: 1rem;
+  gap: var(--space-4);
 }
 
 .panel,
@@ -239,33 +355,36 @@ button:disabled {
 .map-frame,
 .empty-state {
   border: 1px solid var(--color-border);
-  border-radius: 1rem;
+  border-radius: var(--radius-lg);
   background: rgba(13, 23, 36, 0.86);
   box-shadow: var(--shadow-panel);
 }
 
-.panel,
-.empty-state {
-  padding: 1rem;
+.panel {
+  padding: var(--space-4);
 }
 
 .panel__header {
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.85rem;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+  /* In the wide-screen row layout the header sits in a narrow column; allow the
+     action button to drop onto its own line instead of squeezing the heading
+     and the button label into two wrapped lines each. */
+  flex-wrap: wrap;
 }
 
 .panel__title {
   margin: 0;
-  font-size: 1rem;
 }
 
 .panel__eyebrow {
-  margin: 0 0 0.2rem;
+  margin: 0 0 var(--space-1);
   color: var(--color-muted);
-  font-size: 0.72rem;
+  font-size: var(--font-size-xs);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -273,31 +392,31 @@ button:disabled {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+  margin-bottom: var(--space-4);
 }
 
 .metric-card {
-  padding: 0.9rem;
+  padding: var(--space-4);
 }
 
 .metric-card__label {
-  margin: 0 0 0.45rem;
+  margin: 0 0 var(--space-2);
   color: var(--color-muted);
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs);
 }
 
 .metric-card__value {
   margin: 0;
-  font-family: "JetBrains Mono", Consolas, monospace;
-  font-size: 1.35rem;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-2xl);
   font-weight: 800;
 }
 
 .metric-card__trend {
-  margin: 0.4rem 0 0;
+  margin: var(--space-2) 0 0;
   color: var(--color-muted);
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs);
 }
 
 .map-host {
@@ -306,15 +425,15 @@ button:disabled {
 
 .map-provider-badge {
   position: absolute;
-  top: 4.4rem;
-  right: 0.85rem;
+  top: var(--provider-badge-offset);
+  right: var(--space-3);
   z-index: 2;
-  padding: 0.22rem 0.55rem;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: rgba(5, 8, 12, 0.82);
   color: var(--color-cyan);
-  font-size: 0.68rem;
+  font-size: var(--font-size-2xs);
   font-weight: 600;
   letter-spacing: 0.09em;
 }
@@ -324,27 +443,43 @@ button:disabled {
   inset: 0;
 }
 
+/* Loading overlay while an async map provider boots. */
+.map-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 8, 12, 0.72);
+}
+
+.map-loading .empty-state {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .map-frame {
   overflow: hidden;
 }
 
 .map-header {
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 1rem;
+  gap: var(--space-4);
+  padding: var(--space-4);
   border-bottom: 1px solid var(--color-border);
 }
 
 .map-header h2 {
   margin: 0;
-  font-size: 1.15rem;
 }
 
 .map-canvas {
   position: relative;
-  min-height: 34rem;
+  min-height: var(--map-min-height);
   background: #07101a;
   isolation: isolate;
 }
@@ -352,19 +487,19 @@ button:disabled {
 .map-canvas svg {
   display: block;
   width: 100%;
-  min-height: 34rem;
+  min-height: var(--map-min-height);
 }
 
 .layer-controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border);
 }
 
 .layer-toggle {
-  padding: 0.55rem 0.7rem;
+  padding: var(--space-2) var(--space-3);
   color: var(--color-muted);
 }
 
@@ -375,38 +510,51 @@ button:disabled {
 .drone-marker {
   position: absolute;
   z-index: 3;
-  width: 2.35rem;
-  height: 2.35rem;
+  width: var(--drone-marker-size);
+  height: var(--drone-marker-size);
   border: 2px solid var(--marker-color, var(--color-radar));
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: rgba(5, 8, 12, 0.92);
   color: var(--color-text);
   transform: translate(-50%, -50%);
-  box-shadow: 0 0 0 0.35rem rgba(74, 222, 128, 0.12);
+  box-shadow: var(--shadow-marker-glow);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.drone-marker:hover {
+  border-color: var(--color-cyan);
+  box-shadow: var(--shadow-marker-hover);
 }
 
 .drone-marker[aria-pressed='true'] {
-  box-shadow: 0 0 0 0.45rem rgba(56, 189, 248, 0.2), 0 0 1.25rem var(--marker-color);
+  box-shadow: var(--shadow-marker-selected);
+}
+
+/* Keep the focus ring above neighbouring markers and the SVG surface. */
+.drone-marker:focus-visible {
+  z-index: 4;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .drone-marker__callsign {
   position: absolute;
   left: 50%;
-  top: 2.4rem;
+  top: var(--drone-callsign-offset);
   transform: translateX(-50%);
   white-space: nowrap;
   color: var(--color-text);
-  font-family: "JetBrains Mono", Consolas, monospace;
-  font-size: 0.68rem;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-2xs);
   font-weight: 800;
-  text-shadow: 0 1px 5px #000;
+  text-shadow: var(--shadow-text);
 }
 
 .status-list,
 .mission-list,
 .admin-list {
   display: grid;
-  gap: 0.75rem;
+  gap: var(--space-3);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -416,29 +564,30 @@ button:disabled {
 .mission-item,
 .admin-item {
   border: 1px solid var(--color-border);
-  border-radius: 0.8rem;
+  border-radius: var(--radius-md);
   background: rgba(15, 23, 42, 0.54);
-  padding: 0.75rem;
+  padding: var(--space-3);
 }
 
 .status-row,
 .mission-row,
 .admin-row {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
 
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--space-1);
   border: 1px solid var(--badge-border, var(--color-border));
-  border-radius: 999px;
-  padding: 0.25rem 0.55rem;
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-2);
   color: var(--badge-color, var(--color-muted));
-  font-size: 0.72rem;
+  font-size: var(--font-size-xs);
   font-weight: 800;
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -446,7 +595,7 @@ button:disabled {
 
 .altitude-control {
   display: grid;
-  gap: 0.55rem;
+  gap: var(--space-2);
 }
 
 .altitude-control input[type='range'] {
@@ -458,7 +607,7 @@ button:disabled {
 .route-controls,
 .bid-controls {
   display: grid;
-  gap: 0.45rem;
+  gap: var(--space-2);
 }
 
 .route-controls select,
@@ -466,139 +615,268 @@ button:disabled {
 .bid-controls select {
   background: var(--color-panel-strong);
   border: 1px solid var(--color-border-strong);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-sm);
   color: var(--color-text);
-  padding: 0.4rem 0.5rem;
+  padding: var(--space-2);
 }
 
 .bid-presets {
   display: flex;
-  gap: 0.4rem;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .approval-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
   flex-wrap: wrap;
-  margin-top: 0.5rem;
+  margin-top: var(--space-2);
 }
 
 /* M2: data source selector row in the credit wallet panel. */
 .data-source-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   flex-wrap: wrap;
-  margin-bottom: 0.9rem;
+  margin-bottom: var(--space-4);
 }
 
 .data-source-row .label-text {
-  margin-right: 0.25rem;
+  margin-right: var(--space-1);
 }
 
 .drone-detail-grid,
 .admin-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .detail-card {
   border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
-  padding: 0.65rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
   background: rgba(2, 6, 23, 0.38);
 }
 
 .detail-card dt {
   color: var(--color-muted);
-  font-size: 0.72rem;
+  font-size: var(--font-size-xs);
 }
 
 .detail-card dd {
-  margin: 0.18rem 0 0;
+  margin: var(--space-1) 0 0;
   font-weight: 800;
 }
 
+/* --- Token-based layout helpers (replace inline magic margins) --- */
+.spaced-top {
+  margin-top: var(--space-3);
+}
+
+.spaced-top--lg {
+  margin-top: var(--space-4);
+}
+
+.spaced-bottom {
+  margin-bottom: var(--space-3);
+}
+
+.spaced-bottom--lg {
+  margin-bottom: var(--space-4);
+}
+
+/* --- Shared state surfaces: empty / error / loading (see EmptyState.tsx) --- */
 .empty-state {
   display: grid;
   place-items: center;
-  min-height: 14rem;
+  min-height: var(--empty-state-min-height);
+  padding: var(--space-4);
   text-align: center;
 }
 
-.empty-state h2,
-.empty-state h3 {
-  margin: 0 0 0.5rem;
+.empty-state__body {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  max-width: var(--empty-state-max-width);
 }
 
-.empty-state p {
+.empty-state__glyph {
+  display: grid;
+  place-items: center;
+  width: var(--space-8);
+  height: var(--space-8);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--color-muted);
+  font-weight: 800;
+}
+
+.empty-state__title {
+  margin: 0;
+}
+
+.empty-state__message {
   margin: 0;
   color: var(--color-muted);
+  font-size: var(--font-size-small);
 }
 
-@media (max-width: 1180px) {
-  .dashboard-layout {
-    grid-template-columns: 1fr;
+.empty-state__action {
+  margin-top: var(--space-2);
+}
+
+.empty-state--compact {
+  min-height: 0;
+  place-items: start;
+  padding: var(--space-3);
+  text-align: left;
+}
+
+.empty-state--compact .empty-state__body {
+  justify-items: start;
+  gap: var(--space-1);
+}
+
+.empty-state--compact .empty-state__glyph {
+  display: none;
+}
+
+.empty-state--error {
+  border-color: rgba(251, 113, 133, 0.55);
+}
+
+.empty-state--error .empty-state__glyph {
+  border-color: var(--color-red);
+  color: var(--color-red);
+}
+
+.empty-state--loading .empty-state__glyph {
+  border-color: var(--color-cyan);
+  color: var(--color-cyan);
+  animation: bustaron-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes bustaron-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* =============================================================================
+   Responsive tiers
+   ========================================================================== */
+
+/* >= 768px — tablet: sidebar on top, 3-column nav, 2-column metrics. */
+@media (min-width: 768px) {
+  .sidebar__brand {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .nav-group {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .map-header,
+  .panel__header {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .status-row,
+  .mission-row,
+  .admin-row {
+    flex-direction: row;
+    align-items: center;
   }
 
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-}
 
-@media (max-width: 860px) {
-  .app-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    border-right: 0;
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .nav-group {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.5rem;
-  }
-
-  .nav-button {
-    margin-bottom: 0;
-    justify-content: center;
-  }
-
-  .top-bar {
-    align-items: stretch;
-    flex-direction: column;
-    position: static;
-  }
-}
-
-@media (max-width: 560px) {
-  .sidebar__brand,
-  .map-header,
-  .panel__header,
-  .status-row,
-  .mission-row,
-  .admin-row {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .nav-group,
-  .metric-grid,
   .drone-detail-grid,
   .admin-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .dashboard-layout {
-    padding: 0.75rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .map-canvas,
   .map-canvas svg {
-    min-height: 27rem;
+    min-height: var(--map-min-height-md);
+  }
+
+  .dashboard-layout {
+    padding: var(--space-4);
+  }
+}
+
+/* >= 1024px — desktop: sidebar rail, 2-column dashboard, 4-column metrics. */
+@media (min-width: 1024px) {
+  .app-shell {
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  }
+
+  .sidebar {
+    border-right: 1px solid var(--color-border);
+    border-bottom: 0;
+  }
+
+  .nav-group {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .nav-button {
+    justify-content: flex-start;
+    margin-bottom: var(--space-2);
+  }
+
+  .top-bar {
+    flex-direction: row;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .dashboard-layout {
+    grid-template-columns: minmax(0, 1fr) var(--panel-column-width);
+    gap: var(--space-4);
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .map-canvas,
+  .map-canvas svg {
+    min-height: var(--map-min-height-lg);
+  }
+}
+
+/* >= 1440px — wide desktop: larger rail and wider context column. */
+@media (min-width: 1440px) {
+  .app-shell {
+    grid-template-columns: var(--sidebar-width-wide) minmax(0, 1fr);
+  }
+
+  .dashboard-layout {
+    grid-template-columns: minmax(0, 1fr) var(--panel-column-width-wide);
+    gap: var(--space-4);
+    padding: var(--space-4);
   }
 }

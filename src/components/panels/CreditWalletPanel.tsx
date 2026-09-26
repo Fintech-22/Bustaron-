@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
+import { EmptyState } from '../common/EmptyState';
 import { quoteRouteCredits } from '../../services/creditsService';
 import { listAvailableBackends, useDashboardStore } from '../../store/dashboardStore';
 import type { DataBackend } from '../../services/dataBackend';
@@ -70,6 +71,8 @@ function AuctionCard({ auction }: { auction: SlotAuction }): JSX.Element {
     (best, bid) => (best === null || bid.credits > best.credits ? bid : best),
     null,
   );
+  // A bid must beat the reserve and come from a selected wallet.
+  const canBid: boolean = walletId !== '' && bidCredits >= auction.reserveCredits + 1;
 
   return (
     <article className="admin-item" aria-label={`Auction ${auction.slotName}`}>
@@ -131,19 +134,24 @@ function AuctionCard({ auction }: { auction: SlotAuction }): JSX.Element {
           <button
             type="button"
             className="control-button"
+            disabled={!canBid}
             onClick={() => bidOnAuction(auction.id, walletId, bidCredits)}
           >
             Place bid
           </button>
-          <button type="button" className="control-button" onClick={() => awardTopBid(auction.id)}>
+          <button type="button" className="control-button" disabled={topBid === null} onClick={() => awardTopBid(auction.id)}>
             Award top bid
           </button>
         </div>
       )}
       {lastError && (
-        <p role="alert" className="helper-text" style={{ color: 'var(--color-red)' }}>
-          {lastError}
-        </p>
+        <EmptyState
+          compact
+          headingLevel={3}
+          variant="error"
+          title="Auction action failed"
+          message={lastError}
+        />
       )}
     </article>
   );
@@ -188,27 +196,54 @@ export function CreditWalletPanel(): JSX.Element {
         ))}
       </div>
 
-      <div className="admin-grid" aria-label="Operator wallets">
-        {wallets.map((wallet: CreditWallet) => (
-          <WalletCard key={wallet.id} wallet={wallet} />
-        ))}
-      </div>
+      {wallets.length === 0 ? (
+        <EmptyState
+          compact
+          headingLevel={3}
+          title="No operator wallets"
+          message="Wallet balances appear once an operator is registered with the credit service."
+        />
+      ) : (
+        <div className="admin-grid" aria-label="Operator wallets">
+          {wallets.map((wallet: CreditWallet) => (
+            <WalletCard key={wallet.id} wallet={wallet} />
+          ))}
+        </div>
+      )}
 
-      <h3 className="panel__title" style={{ marginTop: '1rem' }}>Open slot auctions</h3>
-      <div className="admin-grid" aria-label="Slot auctions">
-        {auctions.map((auction: SlotAuction) => (
-          <AuctionCard key={auction.id} auction={auction} />
-        ))}
-      </div>
+      <h3 className="panel__title spaced-top--lg">Open slot auctions</h3>
+      {auctions.length === 0 ? (
+        <EmptyState
+          compact
+          headingLevel={3}
+          title="No open auctions"
+          message="Corridor slot auctions appear here when a corridor owner opens a window."
+        />
+      ) : (
+        <div className="admin-grid" aria-label="Slot auctions">
+          {auctions.map((auction: SlotAuction) => (
+            <AuctionCard key={auction.id} auction={auction} />
+          ))}
+        </div>
+      )}
 
-      <h3 className="panel__title" style={{ marginTop: '1rem' }}>Recent credit movements</h3>
-      <ul className="status-list" aria-label="Credit ledger">
-        {creditLedger.map((entry: CreditLedgerEntry) => (
-          <LedgerRow key={entry.id} entry={entry} />
-        ))}
-      </ul>
+      <h3 className="panel__title spaced-top--lg">Recent credit movements</h3>
+      {creditLedger.length === 0 ? (
+        <EmptyState
+          compact
+          headingLevel={3}
+          title="No credit movements yet"
+          message="Bids, awards and approval decisions are appended to the ledger as they happen."
+        />
+      ) : (
+        <ul className="status-list" aria-label="Credit ledger">
+          {creditLedger.map((entry: CreditLedgerEntry) => (
+            <LedgerRow key={entry.id} entry={entry} />
+          ))}
+        </ul>
+      )}
 
-      <p className="helper-text" style={{ marginTop: '0.75rem' }}>
+      <p className="helper-text spaced-top">
         Example quote: 18.5 km route with 1 high-risk segment = {exampleQuote} credits. Escrow is released on award,
         burned on approval, refunded on rejection.
       </p>
