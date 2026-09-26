@@ -268,6 +268,64 @@ unsubstantiated. Corrected record: T7 is the only verified vision pass in this s
 
 ---
 
+## T8 — Resume session: drift audit, UI fixes, verification (2026-09-26 ~21:00)  `[DONE]`
+
+**Step 1 — drift audit (no code written first, per instruction).** Re-read PRD (904 lines,
+S1–S129), `docs/milestone-01/02.md`, `docs/system_design.md`, `HANDOFF.md`, `TRACE.md`
+T0–T7 and `docs/vault/`. Re-verified T1's findings against current code: PRD defects 1–6
+still present (altitude clamp 250 at `dashboardStore.ts:129`, no `operatorId`, sandbox
+kind missing, approvals reason read-only, M1 KPI labels, no sandbox taxonomy); design
+drift items (MUI/lucide absent, milestone-01.md stale sections) unchanged. **Nothing new
+drifted** since T1 — the two open *UI* defects from T7 were this session's scope:
+
+- **T7-3 mobile hierarchy — FIXED.** `SidebarNav` collapses the section list below 768px
+  behind a `Menu` disclosure (`aria-expanded`/`aria-controls`, collapse-on-navigate).
+  CSS: `.sidebar__topline` row, `.nav-group--collapsed`, toggle hidden ≥768px.
+  Verified live: base tier nav `display:none` → expanded `grid` → re-collapsed after nav;
+  at 1440px toggle `display:none`, nav rail permanent, map at y=443 of 900.
+- **C6 empty-Mapbox default — FIXED.** `MapHost` now **defaults to offline-svg even with
+  a token** and adds a labelled provider toggle (Mapbox option disabled + explanatory
+  title when no token). Verified live: toggle → MAPBOX boots (`data-mapbox-state=ready`),
+  badge + note shown; switch back restores the SVG layer controls.
+- **Desktop regression caught live and fixed:** the first CSS fix left the toggle visible
+  at 1440px (shared `.control-button` rule later in the file beat the media query).
+  Fixed with two-class specificity (`.sidebar .sidebar__toggle`). Only live inspection
+  caught it — all gates were green while it was visible.
+
+**New REAL finding — Victoria Harbour RFZ seals mid-harbour transits (compliance-correct,
+not a bug).** `scripts/probe_routes.ts`: 38/42 endpoint pairs route; the 4 failures are
+exactly Central pier ↔ {Kwun Tong promenade, Lei Yue Mun east}. `scripts/probe_harbour.ts`
+shows the corrected 284-zone pack makes every mid-harbour transect solid 'Victoria
+Harbour' RFZ — the old 42/42 claim was an artifact of the pre-T2 corrupt rings. Actions:
+MissionPanel default destination → 'Stonecutters west' (a working demo pair); refusal
+asserted as a feature in `scripts/probe_lifecycle.ts` (`role="alert"` verified live on
+the CAD source).
+
+**Seed-data fix.** `mockData.ts` wallets now carry reservedCredits that mirror the
+seeded open bids AND escrowed approvals (urban 260/80, cargo 640/160). Before, rejecting
+an approval could drive reserved negative.
+
+**Verification evidence (bun + live preview).**
+- `scripts/probe_lifecycle.ts` (NEW, bun, headless): 28/28 PASS — init, mock+CAD planning,
+  explicit sealed-crossing refusal, bid escrow 90, below-reserve rejection, award refunds
+  (harbour −90→0 reserved, cargo winning bid held), settleAuction transfers 120 to the
+  corridor owner, approval reject refunds 80 / approve burns 40, ledger rows, seam
+  registry. Exit 0.
+- Live preview at 127.0.0.1:4173 (`register_preview` + snapshot/evaluate): Menu disclosure
+  aria + display transitions; provider toggle both ways; route planned 6.5 km / 10
+  waypoints with cyan polyline (10 point pairs) on the map; CAD-source refusal alert;
+  1440px tier metrics (toggle hidden, nav rail, 4-col KPIs, 2-col dashboard, map 734px).
+  `preview_logs` console: **zero errors**.
+- Preview-env note: the preview browser does not deliver trusted clicks to the page, so
+  interactions were driven through the React props handlers (`__reactProps$` keys) — the
+  same code path a real click executes. State transitions were asserted after each step.
+- Gates: tsc 0 · eslint 0 · vite build 0 · vitest **71/71** (was 66; +3 nav disclosure,
+  +2 net provider-switch coverage).
+
+**Still open (unchanged):** PRD defects 1–6, MUI/lucide drift, C2/C3 housekeeping, C5.
+
+---
+
 ## CAVEATS (read before trusting git history)
 
 **C1 — Commit `33da058` message is partly inaccurate.** It reads *"…vision-verified
@@ -310,13 +368,15 @@ exception set — if you regenerate the CAD data, that hardcoded list must be up
 | T4 UI (breakpoints, a11y, states, tokens) | DONE | `33da058` (mixed) |
 | T5 Obsidian memory pipeline | DONE | `e02149e`, `4da43f9` |
 | T7 lead vision verification | DONE | — (findings in this file) |
+| T8 drift audit + mobile disclosure + provider default + seed fix | DONE | (this session) |
 
 Final state: **66/66 tests across 10 files; tsc, vite build, eslint all exit 0.**
 
-Deferred to M3 (found in T1, NOT fixed — out of the user's requested scope):
+Deferred to M3 (T1 defects remain open; T8 closed T7-3 and C6-default only):
 altitude bands 0-400m (currently clamped at 250), per-operator drone scoping,
 sandbox-vs-restricted zone cost model, approvals reason field, PRD KPI bars,
-missing nav sections, Mapbox overlay migration (C6), mobile nav disclosure (T7-3).
+missing nav sections, Mapbox overlay migration (the toggle is the stopgap —
+Mapbox still renders no tactical overlay), sandbox zones excluded from M3 geodata.
 
 ## NEXT AGENT — start here
 1. Read this file fully → `docs/vault/Index.md` → newest `docs/vault/sessions/*.md`.

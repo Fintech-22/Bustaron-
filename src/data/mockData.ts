@@ -235,9 +235,12 @@ export const mockSystemWidgets: SystemWidget[] = [
 ];
 
 export const mockWallets: CreditWallet[] = [
+  // reservedCredits mirror the seeded open bids (harbour 40, cargo 120) AND the
+  // escrowed approval requests below (cargo 40, urban 80); rejecting a request
+  // must be able to refund without driving reserved negative.
   { id: 'wallet-harbour', operatorName: 'Harbour Ops Desk', balanceCredits: 480, reservedCredits: 40 },
-  { id: 'wallet-urban', operatorName: 'Urban Scan Team', balanceCredits: 260, reservedCredits: 0 },
-  { id: 'wallet-cargo', operatorName: 'Cargo Pilot Cell', balanceCredits: 640, reservedCredits: 120 },
+  { id: 'wallet-urban', operatorName: 'Urban Scan Team', balanceCredits: 260, reservedCredits: 80 },
+  { id: 'wallet-cargo', operatorName: 'Cargo Pilot Cell', balanceCredits: 640, reservedCredits: 160 },
 ];
 
 const mockBidsHarbour: AuctionBid[] = [

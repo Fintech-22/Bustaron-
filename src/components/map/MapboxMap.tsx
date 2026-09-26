@@ -10,9 +10,9 @@ type MapboxStatus = 'idle' | 'ready' | 'sdk-missing';
 /**
  * Mapbox base layer for the Hong Kong operating area.
  *
- * Scope for this milestone: the base map only. RFZ polygons, drones, routes and
- * layer toggles remain owned by TacticalMap (the offline SVG map) and are not
- * migrated here yet.
+ * Scope: base map only. RFZ polygons, drones, routes and layer toggles remain
+ * owned by TacticalMap (the offline SVG map), which is why MapHost defaults to
+ * it even when a token is present (TRACE C6).
  */
 export function MapboxMap(): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);

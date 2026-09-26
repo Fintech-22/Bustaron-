@@ -5,8 +5,11 @@ import { planDraftRoute, useDashboardStore } from '../../store/dashboardStore';
 import type { Mission, MissionStatus, RiskLevel } from '../../types/domain';
 import type { ZoneHit } from '../../services/geo/pointInPolygon';
 
-// Demo endpoints verified clear of every CAD RFZ margin; routes between them
-// exercise real A* detours against the ingested zone pack.
+// Demo endpoints verified clear of every CAD RFZ margin. NOTE (corrected
+// 284-zone pack): the Victoria Harbour RFZ correctly seals mid-harbour
+// transits, so the default draft pairs the Central pier with the western
+// harbour entrance (Stonecutters west). Central <-> Kwun Tong / Lei Yue Mun
+// refusals are compliance-correct and asserted in scripts/probe_lifecycle.ts.
 const draftLocations: { name: string; point: { lat: number; lng: number } }[] = [
   { name: 'Central pier', point: { lat: 22.286, lng: 114.157 } },
   { name: 'Aberdeen south', point: { lat: 22.262, lng: 114.155 } },
@@ -57,7 +60,7 @@ export function MissionPanel({ expanded = false }: MissionPanelProps): JSX.Eleme
   const clearFlightDraft = useDashboardStore((state) => state.clearFlightDraft);
   const setAltitudeBand = useDashboardStore((state) => state.setAltitudeBand);
   const [originName, setOriginName] = useState(draftLocations[0].name);
-  const [destinationName, setDestinationName] = useState(draftLocations[5].name);
+  const [destinationName, setDestinationName] = useState(draftLocations[4].name);
   const origin = draftLocations.find((entry) => entry.name === originName) ?? draftLocations[0];
   const destination = draftLocations.find((entry) => entry.name === destinationName) ?? draftLocations[1];
   const sectionTitle = expanded ? 'Mission planning workspace' : 'Mission queue';

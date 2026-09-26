@@ -1,18 +1,15 @@
 # BUSTARON — SESSION HANDOFF
 
 > Purpose: let any new AI/engineer resume **without re-reading the whole project**.
-> Last updated: 2026-09-26 16:10 GMT+8 — **M2 complete, gates green.**
+> Last updated: 2026-09-26 21:30 GMT+8 — **T8 UI/verification session complete, gates green.**
 
-> ## ⚠️ READ `VERIFICATION_REPORT.md` BEFORE STARTING M3
-> Independently verified 2026-09-26 17:10: all gate claims are **true** (tsc 0,
-> eslint 0, vite build 0, vitest 48/48), but **`src/data/cadRfzData.json` has two
-> real defects the tests do not catch**:
-> 1. `compact_ring()` in `scripts/generate_cad_data.py` destroys ring order →
->    self-intersecting zigzag rings → **40 of 135 zones (29.6%) fail their own
->    centroid containment test**.
-> 2. Perimeter-based dedupe silently **drops 151 of 286 source zones (53%)**.
->
-> Fix both and regenerate the data before building any M3 geospatial logic on top.
+> ## ⚠️ READ `TRACE.md` §T8 AND `docs/vault/Index.md` BEFORE STARTING M3
+> T8 (latest session) re-audited all docs vs code, closed the two open T7 UI
+> defects (mobile nav disclosure, empty-Mapbox default), fixed a wallet seed
+> invariant, and recorded a **compliance-correct planner behaviour change**:
+> with the corrected 284-zone CAD pack, the Victoria Harbour RFZ seals
+> mid-harbour transits (38/42 endpoint pairs route). PRD defects 1–6 remain
+> open and are the first real M3 product work.
 
 ---
 
@@ -23,29 +20,30 @@
 | Product | **BUSTARON v3** — Hong Kong drone airspace / UTM operations platform |
 | Active workspace | `C:\Users\user\WorkBuddy AI\2026-09-24-21-39-57` |
 | Stack | Vite 5.4.21 + React 18 + TypeScript 5.9.3 + Zustand 4 + Tailwind 3 + Vitest 2.1.9 |
-| Current milestone | **M2 — Planning + data adapters. DONE & VERIFIED.** M1 shell verified beneath it. |
-| Source of truth PRD | `C:\Users\user\WorkBuddy AI\2026-09-20-21-42-04\BUSTARON_PRD.md` (58 KB) |
+| Current milestone | **M3 in progress.** M1 shell + M2 planning/adapters verified beneath it. T7+T8 UI hardening done. |
+| Source of truth PRD | `C:\Users\user\WorkBuddy AI\2026-09-20-21-42-04\BUSTARON_PRD.md` (904 lines, S1–S129) |
 | Geodata (M2 input) | `C:\Users\user\Downloads\bustaron_map_data\{GeoJSON,KML}` |
-| Extra refs | `C:\Users\user\WorkBuddy AI\2026-09-20-21-42-04\` — `landsd_data/`, `orbitron_js_bundle.js`, `ui_inspect/`, `decentralized_deck.txt`, `proof_carrying_drone.txt` |
-| Git | **IS a git repo now.** `main`, M1 baseline commit `081e985` + M2 commit. |
+| Git | `main`; M1 `081e985` → M2 `205f696`/`4c663ab` → T2 `3f39ed9`/`ecc9239` → T3 `bb62680` → T4/T5 `33da058`/`e02149e`/`4da43f9` → docs `2349304`/`018d377`/`569b5b9` |
 
 ---
 
-## 2. Verification status — ALL GREEN ✅ (M2)
+## 2. Verification status — ALL GREEN ✅ (T8)
 
-Verified 2026-09-26 16:07 after the M2 build.
+Verified 2026-09-26 ~21:30 after the T8 changes.
 
-| Command | Result |
+| Command (direct binaries via bun) | Result |
 |---|---|
 | `tsc -b` | exit 0 |
-| `vite build` | exit 0 — `dist/assets/index-yjz_CzkM.js` 407.92 kB (CAD zone pack bundled), CSS 13.42 kB |
-| `eslint . --max-warnings=0` | exit 0, zero warnings |
-| `vitest run` | **47/47 tests pass** (6 files: M1 shell regression + geo/A*/credits/CAD/UI flows) |
-
-M1 acceptance criteria from `docs/system_design.md` §2 are all met.
+| `vite build` | exit 0 — `index-*.js` 557.37 kB (the 284-zone CAD pack accounts for the size) |
+| `eslint . --max-warnings=0` | exit 0 |
+| `vitest run` | **71/71 pass** (11 files) |
+| `bun scripts/probe_lifecycle.ts` | **28/28 PASS, exit 0** (new T8 headless lifecycle probe) |
+| Live preview assertions | disclosure, provider toggle, route polyline, refusal alert, 1440px tier — all verified; console clean |
 
 ### ⚠️ IMPORTANT — how to run commands here
-`npm run build|test|lint` is **extremely slow** (3–5 min) because `package.json` scripts use `npm exec --package ...`, which re-resolves the registry on every run. **Bypass it and call local binaries directly:**
+
+**Never `npm install` / `npm run *`.** Call the tools through the bundled bun
+directly:
 
 ```bash
 cd "C:/Users/user/WorkBuddy AI/2026-09-24-21-39-57"
@@ -54,199 +52,126 @@ B="C:/Users/user/AppData/Local/Programs/@codebufffreebuff-desktop/resources/bun/
 "$B" node_modules/vite/bin/vite.js build
 "$B" node_modules/eslint/bin/eslint.js . --max-warnings=0
 "$B" node_modules/vitest/vitest.mjs run
-"$B" node_modules/vite/bin/vite.js --host 0.0.0.0        # dev server
 ```
 
-**Node may be missing from PATH in your process — prefer bun anyway.** The
-`node_modules/.bin` shims exec `node`; if it is not on PATH they fail with
-`node: not found`. The reliable route is the Freebuff desktop's bundled
-**bun 1.4.2** at the path above — run each tool's JS entry point through it
-directly (see the commands). Verified working: tsc, vite, eslint, vitest.
+Dev/preview servers: `run_terminal_command` BACKGROUND is not implemented —
+use detached PowerShell with the full bun path, then `register_preview` with
+url + pid (get the pid from `netstat -ano | grep :4173`):
 
-> Correction (verified 2026-09-26): Node **does** exist on this machine at
-> `C:\Users\user\.workbuddy-ai\binaries\node\versions\24.14.0\node` (v24.14.0),
-> and the `.bin` shims work in environments that have it on PATH. The
-> "no Node.js" statement is true only for processes with a restricted PATH.
-> Keep using bun — it always works — but don't go hunting for a missing runtime.
+```bash
+powershell -NoProfile -Command "Start-Process -WindowStyle Hidden -FilePath '<full bun.exe path>' -ArgumentList 'node_modules/vite/bin/vite.js','preview','--host','127.0.0.1','--port','4173','--strictPort' -WorkingDirectory '<project dir>'"
+```
 
-Typical direct-binary timings: tsc <10 s, vite build ~2–45 s, vitest ~4–35 s.
-**Do not run `npm install`** — `node_modules` is already complete (241 packages). A re-install triggers the destructive guard described in §4.
+**Preview-env note (T8):** the preview browser does not deliver trusted clicks
+to the page. Drive interactions through the React props handlers
+(`element[Object.keys(el).find(k => k.startsWith('__reactProps$'))].onClick({...})`)
+— the same code path a real click executes — then assert store/DOM state.
+
+The 3 `node_modules/**/*.DELETE.*` files are known-harmless leftovers (real
+files restored beside them); see §4.1 history.
 
 ---
 
-## 3. What was built (M1)
+## 3. T8 session changes (this handoff's delta)
 
-A mock-only, dark-theme tactical operations SPA. No backend, no map API, no blockchain.
-
-**Source files — 20 files, 1,760 lines total:**
-
-| File | LOC | Role |
+| Change | Why | Where |
 |---|---|---|
-| `src/types/domain.ts` | 91 | Domain model: Drone, Mission, AirspaceZone, WeatherAlert, Metric, UserRole, NavSection, LayerId, altitude bands |
-| `src/data/mockData.ts` | 231 | Realistic HK mock data (Victoria Harbour, drones, routes, RFZ, weather, layer definitions) |
-| `src/services/mockDataService.ts` | 47 | `loadInitialState()`, `simulateTick()` — the mock→real seam for M2 |
-| `src/store/dashboardStore.ts` | 102 | Zustand store: role, active section, selected drone, layer flags, altitude band, emergency state |
-| `src/components/layout/AppShell.tsx` | 84 | Shell composition + operator/admin metric rows |
-| `src/components/layout/SidebarNav.tsx` | 76 | Operator (8) + Admin (10) nav entries, `aria-current` |
-| `src/components/layout/TopBar.tsx` | 75 | Role switch, emergency hold, new flight |
-| `src/components/map/TacticalMap.tsx` | 125 | Schematic 2D HK map (hand-rolled SVG, no external tiles) |
-| `src/components/map/DroneMarker.tsx` | 33 | Selectable drone marker |
-| `src/components/map/MapLayerControls.tsx` | 27 | Layer toggles, `role="group"`, `aria-pressed` |
-| `src/components/panels/StatusPanel.tsx` | 69 | Live status / selected drone |
-| `src/components/panels/MissionPanel.tsx` | 85 | Mission preview |
-| `src/components/panels/AdminPanel.tsx` | 68 | Approvals, blockchain audit, counter-drone posture |
-| `src/components/common/MetricCard.tsx` | 33 | Reusable metric card |
-| `src/components/common/EmptyState.tsx` | 19 | Reusable empty state |
-| `src/styles/globals.css` | 537 | Dark tactical theme, responsive 320/768/1024/1440, focus states |
-| `src/App.tsx` / `src/main.tsx` | 5 / 16 | Entry |
-| `src/test/App.test.tsx` / `setup.ts` | 36 / 1 | 3 component tests |
+| Mobile nav disclosure | T7-3: at 320px the sidebar consumed the whole first viewport; the map started two screens down | `SidebarNav.tsx`, `globals.css` |
+| Map provider toggle + offline-svg default | C6: the Mapbox path renders no tactical overlay, so defaulting to it regressed the PRD landing view | `MapHost.tsx` |
+| Desktop toggle-visibility fix | Live inspection caught the shared `.control-button` rule beating the ≥768px media query | `globals.css` |
+| Wallet seed invariant | Seed `reservedCredits` did not include escrowed approvals → rejecting could go negative | `mockData.ts` |
+| Default demo destination | Central↔Kwun Tong is correctly refused now (see below); Central→Stonecutters is a working pair | `MissionPanel.tsx` |
+| Lifecycle probe (NEW) | Headless end-to-end behaviour proof for planner/credits/approvals | `scripts/probe_lifecycle.ts` |
+| Harbour diagnostic (NEW) | Documents which transects the harbour RFZ seals | `scripts/probe_harbour.ts` |
+| Provider + disclosure tests (NEW/rewritten) | Cover the C6 default and T7-3 contract | `MapHost.test.tsx`, `navDisclosure.test.tsx` |
 
-**Config:** `package.json`, `index.html`, `vite.config.ts`, `tsconfig{,.app,.node}.json`, `eslint.config.js`, `tailwind.config.ts`, `postcss.config.js`.
+### Victoria Harbour RFZ seals mid-harbour transits — NOT a bug
 
-**Key product decision honored:** PRD requires **2D map as the landing view**; 3D/Cesium is hidden behind a nav tab, not the default.
+With the T2-corrected 284-zone pack, "Victoria Harbour" is itself a CAD RFZ.
+With the planner's 60 m margin, every mid-harbour transect is blocked —
+Central pier ↔ {Kwun Tong promenade, Lei Yue Mun east} are refused with
+`No compliant route found within lattice bounds` (surfaced as `role="alert"`).
+The pre-T2 claim "all 42 pairs route" was an artifact of the corrupt rings.
+Demo default is now Central pier → Stonecutters west (6.5 km, 10 waypoints);
+the refusal is asserted in `scripts/probe_lifecycle.ts` and was verified live.
 
 ---
 
-## 4. Environment gotchas (READ BEFORE DEBUGGING)
+## 4. Environment gotchas (unchanged, still true)
 
-### 4.1 Safe-delete guard corrupts `node_modules` (FIXED, but may recur)
-The host's file-operation guard intercepts npm's delete step and renames files to `*.DELETE.<hash>` instead of removing them. On 2026-09-24 this broke the install mid-flight, and it left **3 files with missing `.js` entries**, which made every `vitest` run die with `Cannot find module ... http-proxy-agent\dist\index.js`.
+### 4.1 Safe-delete guard leftovers
+`find node_modules -name "*.DELETE.*"` → the same 3 files as before. Harmless
+because the real files were restored next to them. Symptom if ever broken:
+`MODULE_NOT_FOUND` on `http-proxy-agent` inside jsdom — repair by copying each
+`.DELETE.` file to its real name.
 
-**Detect:**
-```bash
-find node_modules -name "*.DELETE.*"
-```
-**Repair** (restores the file under its real name; the `.DELETE.` original can stay):
-```bash
-cd "C:/Users/user/WorkBuddy AI/2026-09-24-21-39-57"
-for f in $(find node_modules -name "*.DELETE.*"); do cp "$f" "${f%%.DELETE.*}"; done
-```
-Files repaired this session:
-- `node_modules/agent-base/dist/index.js`
-- `node_modules/http-proxy-agent/dist/index.js`
-- `node_modules/https-proxy-agent/dist/index.js`
+### 4.2 node_modules is complete — do not reinstall
+241 packages. Installed versions drift above declared ranges (tsc 5.9.3,
+eslint 9.39.5, vite 5.4.21) — harmless.
 
-Symptom to recognize: `MODULE_NOT_FOUND` on `http-proxy-agent` / `https-proxy-agent` / `agent-base` inside `jsdom`. It is **not** a source-code bug.
-
-### 4.2 `node_modules` is complete — do not reinstall
-241 packages, all of `vite typescript vitest jsdom react zustand eslint tailwindcss @vitejs/plugin-react @testing-library/react` present. Note installed versions drift above the declared ranges (typescript 5.9.3 vs `^5.6.3`, eslint 9.39.5 vs `^9.17.0`, vite 5.4.21 vs `^5.4.11`) — harmless, but pin them if reproducibility matters.
-
-### 4.3 Stale file
-`vite.config.ts.timestamp-1790259748782-13c4802b40a4.mjs` is a leftover vite temp file at project root. Safe to delete.
-
-### 4.4 No git
-There is no repository, so there is **no rollback safety net**. Consider `git init` + initial commit before starting M2.
+### 4.3 Mapbox token
+Lives only in gitignored `.env.local` (`VITE_MAPBOX_TOKEN`); the app defaults
+to the offline SVG map and the MAPBOX toggle is disabled without it. See
+`.env.example`.
 
 ---
 
-## 5. Bugs found and fixed this session
+## 5. Known open defects (PRD-level, deliberately unfixed)
 
-1. **Test infra dead** — jsdom could not load because of the 3 missing files above. Fixed by restoring them (§4.1). Before: `Test Files no tests / Errors 1 error`. After: 3/3 pass.
-2. **Ambiguous test query** — `src/test/App.test.tsx:12` used `screen.getByRole('button', { name: /routes/i })`, which matched **two** elements: the map layer toggle "Routes" and the sidebar "Approvals Queue" nav item (whose description text is *"Mock requests and routes"*). Testing Library strict mode threw. Fixed by:
-   - `src/components/map/MapLayerControls.tsx:11` — added `role="group"` to the controls container (also a genuine a11y improvement for a toggle group).
-   - `src/test/App.test.tsx` — import `within`, then scope all four layer assertions to `within(screen.getByRole('group', { name: /map layer controls/i }))`.
+Re-verified against code in T8 (first found in T1):
+
+1. Altitude bands: PRD wants 0–400 m in five bands; slider caps at 220 and the
+   store clamps at 250 (`dashboardStore.ts` `setAltitudeBand`).
+2. No per-operator drone scoping (`Drone` has no `operatorId`).
+3. Sandbox zones treated as no-fly (CAD pack has no kind taxonomy; PRD §5.3
+   wants 25 sandbox zones at high cost, not infinite).
+4. Approvals have no decision-reason input field (PRD S121).
+5. KPI bars don't match PRD (S110/S117: no Credits Balance / ESG / Blockchain
+   TPS / Pending Approvals / Active Alerts).
+6. `AirspaceZone.kind` cannot represent the sandbox class.
+
+Design-doc drift, still true: MUI and lucide-react never adopted (docs mandate
+them — either adopt or amend the docs); `docs/milestone-01.md` nav lists don't
+exist in the app; `npm run` has never been executed (C5).
 
 ---
 
 ## 6. Next steps — resume point
 
-**Immediate (finish M1 cleanup, ~5 min):**
-1. Optionally run the dev server once (`./node_modules/.bin/vite --host 0.0.0.0`) and eyeball the operator dashboard + admin switch in a browser. No functional risk — build and tests already pass.
-2. `git init && git add -A && git commit` to establish a baseline.
-3. Delete the stale `vite.config.ts.timestamp-*.mjs`.
+**M3 product work (in priority order):**
+1. PRD defects 1–6 above — each is small; 1+4 pair naturally (altitude bands +
+   approvals reason), 2+3 need small domain-model extensions.
+2. Mapbox overlay migration (zones/drones/routes on the Mapbox path) — the
+   provider toggle is a stopgap.
+3. M3 backend behind the `DataBackend` seam (`src/services/dataBackend.ts`):
+   FastAPI APIs, PoA ledger, LLM agents, server-side persistence (fixes the
+   in-memory reload reset).
 
-## 6. Next steps — resume point (M3)
-
-M1 and M2 are both committed. M2 scope (per `docs/system_design.md` §1) is
-complete: adapter boundary, CAD GeoJSON ingestion (135 RFZ zones), RFZ
-point-in-polygon + buffers, A* lattice route planning, credits/auction service
-and UI (Credit Wallet, Approvals Queue). Details and file inventory:
-`docs/milestone-02.md`.
-
-**Next: M3 — Backend, ledger, agents** (per `docs/system_design.md` §1):
-- FastAPI APIs (the frontend adapters in `src/services/dataBackends.ts` are the
-  exact seam — implement HTTP backends behind the same `DataBackend` interface).
-- Python LLM-agent negotiation, 3-node PoA ledger, blockchain-as-communication.
-- Persist auctions/approvals server-side (frontend state is in-memory today).
-
-Follow-ups noted in `docs/milestone-02.md` §Known follow-ups. The 2D map stays
-the landing view; 3D/Cesium remains behind a nav tab for M4.
-
-Later milestones, unchanged: M4 ESP32-S3 firmware + CesiumJS HK 3D demo · M5 ops platform (fleet, logs, maintenance, customer portal, exports) · M6 BVLOS + E2E hardening.
+**Verification ritual for every change (T8-proven):**
+`probe_lifecycle.ts` → four gates → live preview assertions → `preview_logs`.
 
 ---
 
-## 7. Artifact index
+## 7. Artifact index (delta)
 
 | Path | What it is |
 |---|---|
-| `HANDOFF.md` | **← this file.** Start here. |
-| `overview.md` | M1 work overview — ⚠️ **its "verification blocked" section is STALE** (written 22:05, before install finished at 22:22). Superseded by §2 above. |
-| `docs/system_design.md` | Authoritative M1–M6 roadmap, architecture, acceptance criteria, file list, data models |
-| `docs/milestone-01.md` | M1 explainer: what/why/how/scope — ⚠️ same stale verification note at its end |
-| `docs/class-diagram.mermaid` | Domain class diagram |
-| `docs/sequence-diagram.mermaid` | Runtime sequence diagram |
-| `dist/` | Production build output (verified fresh) |
-| `docs/milestone-02.md` | M2 explainer: adapters, ingestion, A*, credits, verification |
-| `scripts/generate_cad_data.py` | One-shot generator that compacted the CAD GeoJSON into `src/data/cadRfzData.json` |
-| `.workbuddy-ai/memory/2026-09-24.md` | Session work log |
-| `.workbuddy-ai/memory/2026-09-26.md` | Session work log (this session) |
-
-Team state: agent team `software-bustaron` was created with roles `software-architect` and `software-engineer`; the M1 build was executed by those roles. No tasks are in flight.
-
----
+| `TRACE.md` | Authoritative task log — **§T8 is the newest entry** |
+| `docs/vault/` + `Index.md` | Obsidian memory pipeline; newest session note is T8 |
+| `scripts/probe_lifecycle.ts` | NEW — headless planner/credits/approvals lifecycle probe (28 checks) |
+| `scripts/probe_harbour.ts` | NEW — harbour transect diagnostic |
+| `tools/verify-mapbox.mjs` | Programmatic Mapbox render verification (8/8) |
+| `tools/check-layout.mjs` | Programmatic responsive layout measurement |
+| `VERIFICATION_REPORT.md` | Independent audit of the M1/M2 handoff claims |
 
 ## 8. 60-second cold start
 
 ```bash
 cd "C:/Users/user/WorkBuddy AI/2026-09-24-21-39-57"
-find node_modules -name "*.DELETE.*"        # must print nothing; if not, run §4.1 repair
 B="C:/Users/user/AppData/Local/Programs/@codebufffreebuff-desktop/resources/bun/bun.exe"
-"$B" node_modules/vitest/vitest.mjs run     # expect 66 passed / 10 files
-"$B" node_modules/vite/bin/vite.js build    # expect exit 0
+find node_modules -name "*.DELETE.*"        # expect the 3 known leftovers
+"$B" node_modules/vitest/vitest.mjs run     # expect 71 passed / 11 files
+"$B" scripts/probe_lifecycle.ts             # expect ALL CHECKS PASSED
 ```
-Then read **`TRACE.md`** (authoritative session log + caveats) before anything else.
 
----
-
-## 9. M3 session update (2026-09-26 evening) — READ `TRACE.md`
-
-A five-item session ran after the M2 handoff above. **`TRACE.md` is now the authoritative
-document** — it supersedes this file for anything after M2. Summary:
-
-| Item | Outcome | Commit |
-|---|---|---|
-| 1 Drift report (PRD + design vs code) | 6 genuine PRD defects + design drift found. **None fixed** (out of scope). | — |
-| 2 CAD ring bug fix | 135 → **284** zones; centroid misses 40/135 → 21/284; +regression test | `3f39ed9`, `ecc9239` |
-| 3 Mapbox (token from env, SVG fallback) | Token in gitignored `.env.local`; SDK via CDN; basemap verified rendering | `bb62680` |
-| 4 UI (breakpoints, a11y, states, tokens) | Breakpoints → 768/1024/1440; `role="img"` trap fixed; states added | `33da058` (mixed) |
-| 5 Obsidian memory pipeline | `docs/vault/` — 15 notes, 5 templates, dependency-free CLI | `e02149e`, `4da43f9` |
-
-**Final state: 66/66 tests (10 files); tsc, vite build, eslint all exit 0.**
-
-### Highest-priority open issues
-1. **Mapbox shows no tactical overlay** — no RFZ zones, drones, or routes render on the
-   Mapbox path (only the basemap). The M2 SVG map showed all of them, so the default
-   experience regressed. Either migrate the overlay or default to the SVG provider.
-2. **Mobile 320px** — the sidebar consumes the whole first viewport (445 of 720 px, 62%);
-   the map starts ~2 screens down. Needs a nav disclosure at the smallest breakpoint.
-3. **`npm run` has never been executed** — all gates ran via direct binaries under bun.
-
-### Verification honesty (important)
-Image reads failed for most of this session and then began working. Any "vision-verified"
-claim made before the final pass was unsubstantiated. Genuine visual verification was
-performed only at the end; see `TRACE.md` §T7. If image reads fail for you, **say so** —
-do not describe screenshots you cannot see. Routing policy: `docs/model-routing.md`.
-
-### New artifacts
-| Path | What it is |
-|---|---|
-| `TRACE.md` | Authoritative task log, caveats, and next-agent instructions |
-| `VERIFICATION_REPORT.md` | Independent audit of the M1/M2 handoff claims |
-| `docs/vault/` | Obsidian memory pipeline (Index.md is the entry point) |
-| `tools/obsidian.mjs` | Vault CLI: `new` / `index` / `search` / `link` |
-| `tools/screenshot.mjs` | Puppeteer screenshot harness |
-| `tools/verify-mapbox.mjs` | Programmatic Mapbox render verification |
-| `tools/check-layout.mjs` | Programmatic responsive layout measurement |
-| `docs/model-routing.md` | When to route a task to a multimodal model |
-| `RESUME_PROMPT.md` | Copy-paste prompt for handing off to another AI |
+Then read **`TRACE.md` §T8** and the newest vault session note.

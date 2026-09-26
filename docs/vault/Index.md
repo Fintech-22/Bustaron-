@@ -19,9 +19,10 @@ related: []
 
 ## Notes by type
 
-### Session (1)
+### Session (2)
 
 - [[m3-session-obsidian-memory-pipeline-items-1-5]] — M3 session - Obsidian memory pipeline items 1-5 · status: done · 2026-09-26
+- [[t8-resume-session-drift-audit-mobile-disclosure-provider-default]] — T8 resume session - drift audit, mobile disclosure, provider default · status: done · 2026-09-26
 
 ### Spec (1)
 
@@ -54,4 +55,4 @@ related: []
 - `bugs/` — Bug notes
 - `sessions/` — Session notes
 
-_9 note(s) · vault: `docs/vault`_
+_10 note(s) · vault: `docs/vault`_
