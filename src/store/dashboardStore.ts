@@ -189,6 +189,20 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       routeZoneHits: [],
       lastError: null,
     });
+    // Networked backends hydrate async; the sync composition above renders
+    // immediately, then this replaces the server-persisted slices.
+    void backend.hydrate?.().then((serverState: AppState): void => {
+      if (get().backendId !== backend.id) return;
+      set({
+        wallets: serverState.wallets,
+        auctions: serverState.auctions,
+        approvalRequests: serverState.approvalRequests,
+        creditLedger: serverState.creditLedger,
+        drones: serverState.drones,
+        missions: serverState.missions,
+        lastUpdatedIso: serverState.lastUpdatedIso,
+      });
+    });
   },
   bidOnAuction: (auctionId: string, walletId: string, credits: number): void => {
     const state = get();

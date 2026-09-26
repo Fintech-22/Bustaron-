@@ -19,9 +19,10 @@ related: []
 
 ## Notes by type
 
-### Session (3)
+### Session (4)
 
 - [[m3-session-obsidian-memory-pipeline-items-1-5]] — M3 session - Obsidian memory pipeline items 1-5 · status: done · 2026-09-26
+- [[t11-defects-closed-and-m3-phase-1-fastapi-ledger]] — T11 defects closed and M3 phase 1 fastapi ledger · status: done · 2026-09-26
 - [[t8-resume-session-drift-audit-mobile-disclosure-provider-default]] — T8 resume session - drift audit, mobile disclosure, provider default · status: done · 2026-09-26
 - [[t9-mapbox-tactical-overlay-and-prd-defects-1-4-5]] — T9 mapbox tactical overlay and prd defects 1-4-5 · status: done · 2026-09-26
 
@@ -56,4 +57,4 @@ related: []
 - `bugs/` — Bug notes
 - `sessions/` — Session notes
 
-_11 note(s) · vault: `docs/vault`_
+_12 note(s) · vault: `docs/vault`_

@@ -372,6 +372,48 @@ path (see docs/model-routing.md).
 
 ---
 
+## T11 — Defects done + M3 phase 1 (2026-09-26 ~23:30)  `[DONE]`
+
+**All six PRD defects now FIXED.** T10 closed 2/3/6: CAD pack classifies sandbox by
+name (24 sandbox / 260 rfz — defect 6); the A* planner penalises sandbox transit ×2.5
+instead of blocking (defect 3) — consequence: "Victoria Harbour (Low-altitude Economy
+Regulatory Sandbox)" reclassifies, so Central↔Kwun Tong **now routes** (the old sealed-
+crossing assertion moved to a synthetic rfz-band test in `defects.test.ts`); and
+`Drone.operatorId` + operator impersonation scopes the operator console to its own
+fleet on both map providers, with admin seeing all (defect 2). Tests 93/93, probe 36/36,
+commit `ff23cf3`.
+
+**M3 phase 1 — FastAPI server behind the DataBackend seam (commit this entry).**
+`server/main.py` (Python 3.13 + fastapi 0.141.1 + uvicorn 0.54.0, pip --user):
+- **Hash-chained append-only ledger** (PRD FR-B4): blocks carry prev_hash + sha256;
+  `GET /chain`, `/block/{height}`, `chainValid` recomputed on every read.
+- **Server-persisted state** (fixes the in-memory reload reset): wallets, auctions,
+  approvals, credit ledger in `server/data/state.json`, written atomically after every
+  mutation; seeds on first boot.
+- **`POST /chain/tx`** applies + anchors AUCTION_BID / AUCTION_AWARD / APPROVAL_DECIDE
+  with the same business rules as the client (escrow, reserve, mandatory rejection
+  reason → 422, double-decision → 409).
+- Read endpoints: `/api/zones` (serves the same CAD pack), `/api/fleet`, `/api/missions`,
+  `/api/wallets`, `/api/auctions`, `/api/approvals`, `/api/ledger`, `/api/health`.
+- CORS restricted to localhost/127.0.0.1 origins (the live UI caught its absence —
+  headless bun fetch ignores CORS, browsers don't).
+- Frontend: `M3Backend` (id `m3-server`) behind `DataBackend` with optional async
+  `hydrate()`; graceful offline fallback; source picker now offers M3 server.
+
+**Verification.** `python server/probe_api.py` → **22/22 PASS**: full lifecycle, escrow
+math, 422/409 error contracts, chain linkage, **tamper detection** (corrupted block →
+chainValid false), **restart persistence** (state identical after kill+restart), CAD
+pack served (284). `bun scripts/probe_m3_seam.ts` → **7/7**: store → server tx → chain
+anchor → re-hydrate → store reflects persisted escrow. Live UI: source picker shows
+`M3 server · chain h=4`; server-persisted wallets render; a UI bid was accepted and
+anchored (last block AUCTION_BID, chainValid true); console clean. Gates: tsc 0,
+eslint 0, build 0, vitest 93/93.
+
+**M3 remaining:** LLM agent negotiation (§8), 3-node PoA consensus (multi-signer §9),
+ESP32 telemetry feed, HKO weather poller, settle endpoint, WebSocket `/events`.
+
+---
+
 ## CAVEATS (read before trusting git history)
 
 **C1 — Commit `33da058` message is partly inaccurate.** It reads *"…vision-verified

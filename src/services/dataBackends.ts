@@ -2,6 +2,7 @@ import { initialMockState } from '../data/mockData';
 import type { AirspaceZone, AppState, Drone, Mission, WeatherAlert } from '../types/domain';
 import { loadCadZones, loadCadZonesIntersecting } from './cadGeoJsonService';
 import type { BackendId, DataBackend } from './dataBackend';
+import { M3Backend } from './m3Backend';
 import { MockDataService } from './mockDataService';
 
 const backendRegistry = new Map<BackendId, DataBackend>();
@@ -122,19 +123,24 @@ export class CadGeoJsonBackend implements DataBackend {
 
 const mockBackend = new MockBackend();
 const cadBackend = new CadGeoJsonBackend();
+const m3Backend = new M3Backend();
 
 backendRegistry.set(mockBackend.id, mockBackend);
 backendRegistry.set(cadBackend.id, cadBackend);
+backendRegistry.set(m3Backend.id, m3Backend);
 
 /** All selectable backends, in UI order. */
 export function listBackends(): DataBackend[] {
-  return [mockBackend, cadBackend];
+  return [mockBackend, cadBackend, m3Backend];
 }
 
 /** Resolves a backend by id; falls back to the offline mock replay. */
 export function resolveBackend(id: string | null | undefined): DataBackend {
   if (id === 'cad-geojson') {
     return cadBackend;
+  }
+  if (id === 'm3-server') {
+    return m3Backend;
   }
   return mockBackend;
 }

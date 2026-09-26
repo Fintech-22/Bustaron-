@@ -159,7 +159,7 @@ assert('defect 2: operator scope is a strict subset of the fleet', scoped.length
 
 // ------------------------------------------------ 5. provider + seam integrity
 const backends = listAvailableBackends();
-assert('seam: DataBackend registry exposes mock + cad-geojson', backends.length === 2 && backends.some((backend) => backend.id === 'cad-geojson'));
+assert('seam: DataBackend registry exposes mock + cad-geojson + m3-server', backends.length === 3 && backends.some((backend) => backend.id === 'cad-geojson') && backends.some((backend) => backend.id === 'm3-server'));
 const cadBackend = resolveBackend('cad-geojson');
 assert('seam: CAD backend loads zones through the adapter interface', cadBackend.loadZones !== undefined && cadBackend.loadZones().length === 284);
 

@@ -165,9 +165,9 @@ describe('data backend adapters', () => {
     expect(backend.offlineCapable).toBe(true);
   });
 
-  it('lists both backends and resolves the CAD one by id', () => {
+  it('lists all backends and resolves the CAD one by id', () => {
     const backends = listBackends();
-    expect(backends.map((entry) => entry.id)).toEqual(['mock', 'cad-geojson']);
+    expect(backends.map((entry) => entry.id)).toEqual(['mock', 'cad-geojson', 'm3-server']);
     const cad = resolveBackend('cad-geojson');
     expect(cad.id).toBe('cad-geojson');
     expect(cad.usesIngestedGeodata).toBe(true);
