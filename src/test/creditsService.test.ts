@@ -145,9 +145,21 @@ describe('approval escrow lifecycle', () => {
   it('refunds the escrow on rejection', () => {
     const wallets = seedWallets();
     const filed = fileApprovalRequest([], wallets, request);
-    const decided = decideApproval(filed.approvals, filed.wallets, 'req-1', 'rejected', 'x');
+    const decided = decideApproval(filed.approvals, filed.wallets, 'req-1', 'rejected', 'x', 'Harbour traffic above threshold');
     expect(decided.wallets[0].balanceCredits).toBe(500);
     expect(decided.ledgerEntries[0].deltaCredits).toBe(90);
+    // PRD S121: the reason is recorded on the request and in the ledger.
+    expect(decided.approval.decisionReason).toBe('Harbour traffic above threshold');
+    expect(decided.ledgerEntries[0].reason).toContain('Harbour traffic above threshold');
+  });
+
+  it('requires a reason when rejecting (PRD S121)', () => {
+    const wallets = seedWallets();
+    const filed = fileApprovalRequest([], wallets, request);
+    expect(() => decideApproval(filed.approvals, filed.wallets, 'req-1', 'rejected', 'x')).toThrow(/reason is required/i);
+    expect(() => decideApproval(filed.approvals, filed.wallets, 'req-1', 'rejected', 'x', '   ')).toThrow(/reason is required/i);
+    // Approvals may omit the reason.
+    expect(() => decideApproval(filed.approvals, filed.wallets, 'req-1', 'approved', 'x')).not.toThrow();
   });
 
   it('rejects double decisions and unknown ids', () => {

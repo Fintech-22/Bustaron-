@@ -114,10 +114,16 @@ assert('settle: corridor owner credited (urban 260 -> 380)', urbanAfterSettle.ba
 assert('settle: auction reached settled status', settled.auctions.find((auction) => auction.id === 'auction-vh-morning')!.status === 'settled');
 
 // --------------------------------------------------------------- 3. approvals
+// PRD S121: rejection without a reason must be refused with a surfaced error.
 s.decideApprovalRequest('approval-cbd-04', 'rejected');
+st = useDashboardStore.getState();
+assert('reject: missing reason refused with surfaced error', st.lastError !== null && /reason is required/i.test(st.lastError), st.lastError ?? 'no error');
+
+s.decideApprovalRequest('approval-cbd-04', 'rejected', 'Harbour traffic above threshold');
 st = useDashboardStore.getState();
 const urbanAfterReject = walletOf('wallet-urban');
 assert('reject: request flipped to rejected', st.approvalRequests.find((request) => request.id === 'approval-cbd-04')!.status === 'rejected');
+assert('reject: decision reason recorded on the request (PRD S121)', st.approvalRequests.find((request) => request.id === 'approval-cbd-04')!.decisionReason === 'Harbour traffic above threshold');
 assert('reject: 80-credit escrow refunded to balance', urbanAfterReject.balance === 260 + 80 && urbanAfterReject.reserved === 0, JSON.stringify(urbanAfterReject));
 assert('reject: ledger records the refund', st.creditLedger.some((entry) => entry.reason.includes('Refund for rejected')));
 
@@ -129,7 +135,19 @@ assert('approve: escrow burned (reserved 160 -> 120, balance unchanged)', cargoA
 assert('approve: ledger records the burn', st.creditLedger.some((entry) => entry.reason.includes('Escrow burned')));
 assert('approvals: pending queue is empty after both decisions', st.approvalRequests.every((request) => request.status !== 'pending'));
 
-// ------------------------------------------------ 4. provider + seam integrity
+// ------------------------------------------- 4. altitude bands + skycells
+const { ALTITUDE_BANDS_M, droneInBand } = await import('../src/services/altitudeBands');
+const { buildSkycells } = await import('../src/services/skycells');
+assert('bands: five canonical PRD bands spanning 0-400 m', ALTITUDE_BANDS_M.length === 5 && ALTITUDE_BANDS_M[0].min === 0 && ALTITUDE_BANDS_M[4].max === 400);
+s.setAltitudeBand([320, 400]);
+st = useDashboardStore.getState();
+assert('bands: store ceiling reaches 400 m (defect 1 clamp removed)', st.altitudeBandM[0] === 320 && st.altitudeBandM[1] === 400, JSON.stringify(st.altitudeBandM));
+const probeDrone = st.drones[0];
+assert('bands: droneInBand predicate edges inclusive', droneInBand(probeDrone, null) === true);
+const cells = buildSkycells(st.drones, st.missions);
+assert('skycells: deterministic lattice generated over HK bounds', cells.length > 100 && cells.every((cell) => cell.ring.length === 4));
+
+// ------------------------------------------------ 5. provider + seam integrity
 const backends = listAvailableBackends();
 assert('seam: DataBackend registry exposes mock + cad-geojson', backends.length === 2 && backends.some((backend) => backend.id === 'cad-geojson'));
 const cadBackend = resolveBackend('cad-geojson');

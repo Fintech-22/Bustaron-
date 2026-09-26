@@ -26,8 +26,9 @@ export function AppShell(): JSX.Element {
   const activeRole = useDashboardStore((state) => state.activeRole);
   const activeSection = useDashboardStore((state) => state.activeSection);
   const drones = useDashboardStore((state) => state.drones);
-  const missions = useDashboardStore((state) => state.missions);
+  const wallets = useDashboardStore((state) => state.wallets);
   const weatherAlerts = useDashboardStore((state) => state.weatherAlerts);
+  const approvalRequests = useDashboardStore((state) => state.approvalRequests);
   const lastUpdatedIso = useDashboardStore((state) => state.lastUpdatedIso);
   const emergencyMode = useDashboardStore((state) => state.emergencyMode);
   const setRole = useDashboardStore((state) => state.setRole);
@@ -39,10 +40,30 @@ export function AppShell(): JSX.Element {
   const warningDrones: number = drones.filter(
     (drone: Drone): boolean => drone.status === 'warning' || drone.status === 'critical',
   ).length;
-  const averageBattery: number = Math.round(
-    drones.reduce((total: number, drone: Drone): number => total + drone.batteryPct, 0) / Math.max(drones.length, 1),
-  );
   const emergencyAction = emergencyMode ? clearEmergency : triggerEmergency;
+
+  // Mock-era ESG/risk rollups; M3 replaces them with computed ledger values.
+  const esgScore = warningDrones === 0 ? 'A' : 'B';
+  const cityRisk = warningDrones > 1 ? 'Elevated' : warningDrones === 1 ? 'Moderate' : 'Low';
+
+  // PRD S110 (operator) / S117 (admin) live stats bars. The operator bar is
+  // credits/ESG/alerts centric; the admin bar adds system-wide compliance and
+  // ledger signals. Both keep the fleet metrics as trailing context.
+  const totalCredits = wallets.reduce((total, wallet) => total + wallet.balanceCredits + wallet.reservedCredits, 0);
+  const pendingApprovals = approvalRequests.filter((request) => request.status === 'pending').length;
+  const operatorMetrics = [
+    { label: 'Active drones', value: `${activeDrones}/${drones.length}`, trend: 'Fleet in controlled airspace', tone: 'good' as const, icon: 'AIR' },
+    { label: 'Credits balance', value: `${totalCredits}`, trend: `${wallets.length} operator wallets`, tone: 'neutral' as const, icon: 'CRD' },
+    { label: 'ESG score', value: esgScore, trend: 'Fleet-weighted multiplier 1.15×', tone: 'good' as const, icon: 'ESG' },
+    { label: 'Pending alerts', value: `${weatherAlerts.length + warningDrones}`, trend: 'Weather + aircraft watch', tone: warningDrones > 0 ? 'warning' as const : 'good' as const, icon: 'ALR' },
+  ];
+  const adminMetrics = [
+    { label: 'Active drones', value: `${activeDrones}/${drones.length}`, trend: 'System-wide fleet', tone: 'good' as const, icon: 'AIR' },
+    { label: 'Blockchain TPS', value: '0.0', trend: 'Ledger lands with M3 backend', tone: 'neutral' as const, icon: 'BCH' },
+    { label: 'City risk score', value: cityRisk, trend: `${warningDrones} aircraft on watch`, tone: warningDrones > 0 ? 'warning' as const : 'good' as const, icon: 'RSK' },
+    { label: 'Pending approvals', value: `${pendingApprovals}`, trend: 'Escrowed requests in queue', tone: pendingApprovals > 0 ? 'warning' as const : 'good' as const, icon: 'APR' },
+  ];
+  const visibleMetrics = activeRole === 'admin' ? adminMetrics : operatorMetrics;
 
   return (
     <div className="app-shell">
@@ -59,10 +80,16 @@ export function AppShell(): JSX.Element {
         <main className="dashboard-layout" id="main-content">
           <section className="map-column" aria-label="Tactical dashboard">
             <div className="metric-grid" aria-label="Operational key performance indicators">
-              <MetricCard label="Active drones" value={`${activeDrones}/${drones.length}`} trend="Fleet in controlled airspace" tone="good" icon="AIR" />
-              <MetricCard label="Mission load" value={`${missions.length}`} trend="Mock routes visible on map" tone="neutral" icon="NAV" />
-              <MetricCard label="Weather cells" value={`${weatherAlerts.length}`} trend="Layered aviation advisories" tone="warning" icon="WX" />
-              <MetricCard label="Avg battery" value={`${averageBattery}%`} trend={`${warningDrones} aircraft need watch`} tone={warningDrones > 0 ? 'warning' : 'good'} icon="BAT" />
+              {visibleMetrics.map((metric) => (
+                <MetricCard
+                  key={metric.label}
+                  label={metric.label}
+                  value={metric.value}
+                  trend={metric.trend}
+                  tone={metric.tone}
+                  icon={metric.icon}
+                />
+              ))}
             </div>
             {activeSection === 'operations' && <MapHost />}
             {activeSection === 'missions' && <MissionPanel expanded />}

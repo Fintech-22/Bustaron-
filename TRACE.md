@@ -326,6 +326,52 @@ an approval could drive reserved negative.
 
 ---
 
+## T9 — Mapbox overlay + PRD defects 1/4/5 (2026-09-26 ~22:30)  `[DONE]`
+
+**Mapbox is now the real tactical map (C6 RESOLVED).** `MapboxMap` renders the full
+overlay on the dark-v11 basemap: skycell grid (462 deterministic ~600 m cells,
+occupancy-banded green→red per FR-OP-V4), RFZ/sandbox/sensitive/heliport polygons
+(restricted red, sandbox amber family per FR-OP-V3), weather cells, mission routes,
+the planned A* route (dashed cyan), and selectable drones (heading arrows via SDF-style
+addImage + status-colored dots + callsign/altitude labels). Layer toggles and the new
+altitude-band buttons drive BOTH providers through the same store flags. Drone clicks
+select via `queryRenderedFeatures`. `MapHost` defaults to `mapbox` when a token exists;
+the offline SVG remains the no-token fallback + explicit toggle option. Live-verified
+through the `window.__bustaronMap` handle with `queryRenderedFeatures`:
+mock source → 3 zones / 462 cells / 8 drones / 3 routes; CAD source → **110 restricted
+RFZ polygons rendered** with real names (Sai Ying Pun office, Western Barracks, …);
+planned route renders after planning; console clean. Gotcha fixed en route: the legacy
+`{property, stops}` paint form silently rendered nothing — expression form (`['match',…]`)
+works.
+
+**PRD defect 1 FIXED (S109/FR-OP-V6).** `services/altitudeBands.ts`: the five canonical
+bands 0–80/80–160/160–240/240–320/320–400 m; band buttons on both maps (All + 5,
+`aria-pressed`); `altitudeFilterM` filters markers on both providers; the 250 m clamp is
+gone (`setAltitudeBand` now caps at 400). Edges inclusive on both ends (80 m shows under
+either adjacent band).
+
+**PRD defect 4 FIXED (S121).** `decideApproval(..., reason?)`: rejection without a
+non-blank reason throws `A rejection reason is required`; the reason lands on the
+request (`decisionReason`) and in the ledger entry. UI: per-request reason input,
+Reject disabled until filled, inline `role="alert"` error, decided rows show
+"Rejected — <reason>".
+
+**PRD defect 5 FIXED (S110/S117).** AppShell renders the PRD stats bars: operator =
+Active Drones / Credits Balance / ESG Score / Pending Alerts; admin = Active Drones /
+Blockchain TPS (M3 placeholder, honest label) / City Risk Score / Pending Approvals.
+
+**Tests 86/86 (13 files; +15 net).** New: `skycells.test.ts` (4), `prdKpi.test.tsx`
+(10: bands service, filter, KPI roles, approvals reason). Updated: creditsService
+(reason contract), MapHost (new default). Probe: `probe_lifecycle.ts` now 33/33 (added
+band/skycell/refusal-reason checks). Gates: tsc 0 · eslint 0 · build 0 · vitest 86/86.
+
+Remaining PRD defects: 2 (per-operator scoping), 3 (sandbox cost model), 6 (zone kind
+taxonomy), plus MUI/lucide drift. Mapbox screenshot capture still blocked by the
+webview-compositing issue — programmatic assertions via the map handle are the evidence
+path (see docs/model-routing.md).
+
+---
+
 ## CAVEATS (read before trusting git history)
 
 **C1 — Commit `33da058` message is partly inaccurate.** It reads *"…vision-verified

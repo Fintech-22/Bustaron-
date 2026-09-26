@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { EmptyState } from '../common/EmptyState';
 import { useDashboardStore } from '../../store/dashboardStore';
@@ -18,6 +19,17 @@ const decisionLabelByName: Record<ApprovalDecision, string> = {
 
 function ApprovalRow({ request }: { request: ApprovalRequest }): JSX.Element {
   const decideApprovalRequest = useDashboardStore((state) => state.decideApprovalRequest);
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const decide = (decision: 'approved' | 'rejected'): void => {
+    if (decision === 'rejected' && reason.trim().length === 0) {
+      setError('A rejection reason is required before rejecting.');
+      return;
+    }
+    setError(null);
+    decideApprovalRequest(request.id, decision, reason.trim() || undefined);
+  };
 
   return (
     <li className="status-item" aria-label={`Approval request ${request.missionName}`}>
@@ -35,17 +47,46 @@ function ApprovalRow({ request }: { request: ApprovalRequest }): JSX.Element {
       </p>
       <p className="helper-text">{request.reason}</p>
       {request.status === 'pending' ? (
-        <div className="approval-actions" role="group" aria-label={`Decision controls for ${request.missionName}`}>
-          <button type="button" className="control-button" onClick={() => decideApprovalRequest(request.id, 'approved')}>
-            Approve
-          </button>
-          <button type="button" className="control-button" onClick={() => decideApprovalRequest(request.id, 'rejected')}>
-            Reject
-          </button>
-        </div>
+        <>
+          <div className="approval-reason spaced-top">
+            <label className="label-text" htmlFor={`decision-reason-${request.id}`}>
+              Decision reason {`(required to reject)`}
+            </label>
+            <input
+              id={`decision-reason-${request.id}`}
+              type="text"
+              value={reason}
+              placeholder="e.g. harbour traffic density above threshold"
+              autoComplete="off"
+              onChange={(event) => {
+                setReason(event.target.value);
+                if (error) setError(null);
+              }}
+            />
+          </div>
+          {error && (
+            <p className="approval-reason-error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="approval-actions" role="group" aria-label={`Decision controls for ${request.missionName}`}>
+            <button type="button" className="control-button" onClick={(): void => decide('approved')}>
+              Approve
+            </button>
+            <button
+              type="button"
+              className="control-button"
+              disabled={reason.trim().length === 0}
+              onClick={(): void => decide('rejected')}
+            >
+              Reject
+            </button>
+          </div>
+        </>
       ) : (
         <p className="helper-text" role="status">
           Decision: <strong>{decisionLabelByName[request.status]}</strong>
+          {request.decisionReason ? ` — ${request.decisionReason}` : ''}
         </p>
       )}
     </li>
@@ -97,8 +138,8 @@ export function ApprovalsQueuePanel({ expanded = false }: { expanded?: boolean }
       )}
       {expanded && (
         <p className="helper-text spaced-top">
-          Approving burns the escrowed credits; rejecting refunds them to the operator wallet. Every decision is
-          appended to the credit ledger for the M3 audit trail.
+          Approving burns the escrowed credits; rejecting refunds them to the operator wallet and requires a reason
+          (PRD S121). Every decision is appended to the credit ledger for the M3 audit trail.
         </p>
       )}
     </section>

@@ -118,6 +118,8 @@ export interface ApprovalRequest {
   creditsEscrowed: number;
   walletId: string;
   reason: string;
+  /** Admin's decision reason (PRD S121): required for rejections. */
+  decisionReason?: string;
 }
 
 export interface CreditLedgerEntry {

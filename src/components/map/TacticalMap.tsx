@@ -2,6 +2,8 @@ import { useDashboardStore } from '../../store/dashboardStore';
 import type { AirspaceZone, Drone, GeoPoint, Mission, RiskLevel, WeatherAlert } from '../../types/domain';
 import { DroneMarker } from './DroneMarker';
 import { MapLayerControls } from './MapLayerControls';
+import { AltitudeBandControls } from './AltitudeBandControls';
+import { droneInBand } from '../../services/altitudeBands';
 
 interface ProjectedPoint {
   x: number;
@@ -42,6 +44,7 @@ export function TacticalMap(): JSX.Element {
   const zones = useDashboardStore((state) => state.zones);
   const activeLayers = useDashboardStore((state) => state.activeLayers);
   const selectedDroneId = useDashboardStore((state) => state.selectedDroneId);
+  const altitudeFilterM = useDashboardStore((state) => state.altitudeFilterM);
   const plannedRoute = useDashboardStore((state) => state.plannedRoute);
   const selectDrone = useDashboardStore((state) => state.selectDrone);
   const toggleLayer = useDashboardStore((state) => state.toggleLayer);
@@ -60,6 +63,7 @@ export function TacticalMap(): JSX.Element {
         </button>
       </div>
       <MapLayerControls activeLayers={activeLayers} onToggleLayer={toggleLayer} />
+      <AltitudeBandControls />
       {/*
         The container is a labelled group, not role="img": the SVG below carries the
         graphic semantics, while the drone buttons stay siblings so keyboard and
@@ -132,7 +136,7 @@ export function TacticalMap(): JSX.Element {
             />
           )}
         </svg>
-        {activeLayers.drones && drones.map((drone: Drone): JSX.Element => {
+        {activeLayers.drones && drones.filter((drone: Drone): boolean => droneInBand(drone, altitudeFilterM)).map((drone: Drone): JSX.Element => {
           const point: ProjectedPoint = projectPoint(drone.position);
           return (
             <DroneMarker

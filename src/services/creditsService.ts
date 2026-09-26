@@ -241,13 +241,18 @@ export function fileApprovalRequest(
   return { approvals: nextApprovals, wallets: nextWallets };
 }
 
-/** Approves or rejects a pending request, releasing or burning the escrow accordingly. */
+/**
+ * Approves or rejects a pending request, releasing or burning the escrow
+ * accordingly. The decision reason (PRD S121) is mandatory for rejections and
+ * recorded on the request plus in the ledger entry.
+ */
 export function decideApproval(
   approvals: ApprovalRequest[],
   wallets: CreditWallet[],
   requestId: string,
   decision: 'approved' | 'rejected',
   nowIso: string,
+  reason?: string,
 ): ApprovalDecisionResult {
   const approval = approvals.find((entry: ApprovalRequest): boolean => entry.id === requestId);
   if (!approval) {
@@ -255,6 +260,10 @@ export function decideApproval(
   }
   if (approval.status !== 'pending') {
     throw new CreditsError(`Approval ${requestId} has already been decided`);
+  }
+  const trimmedReason = reason?.trim() ?? '';
+  if (decision === 'rejected' && trimmedReason.length === 0) {
+    throw new CreditsError('A rejection reason is required');
   }
   const releasedCredits = approval.creditsEscrowed;
   const nextWallets = wallets.map((entry: CreditWallet): CreditWallet =>
@@ -272,12 +281,15 @@ export function decideApproval(
       id: `ledger-${requestId}-${decision}`,
       walletId: approval.walletId,
       deltaCredits: decision === 'rejected' ? releasedCredits : 0,
-      reason: decision === 'rejected' ? `Refund for rejected ${approval.missionName}` : `Escrow burned for ${approval.missionName}`,
+      reason:
+        trimmedReason.length > 0
+          ? `${decision === 'rejected' ? 'Refund for rejected' : 'Escrow burned for'} ${approval.missionName} — ${trimmedReason}`
+          : `${decision === 'rejected' ? 'Refund for rejected' : 'Escrow burned for'} ${approval.missionName}`,
       atIso: nowIso,
     },
   ];
   const nextApprovals = approvals.map((entry: ApprovalRequest): ApprovalRequest =>
-    entry.id === requestId ? { ...entry, status: decision } : entry,
+    entry.id === requestId ? { ...entry, status: decision, decisionReason: trimmedReason.length > 0 ? trimmedReason : undefined } : entry,
   );
   return {
     approval: nextApprovals.find((entry) => entry.id === requestId)!,

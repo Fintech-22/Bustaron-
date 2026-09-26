@@ -12,10 +12,12 @@ import type {
 import { listBackends, resolveBackend } from '../services/dataBackends';
 import type { DataBackend } from '../services/dataBackend';
 import { awardAuction, decideApproval, placeBid } from '../services/creditsService';
+import type { ApprovalDecisionResult } from '../services/creditsService';
 import { planRoute } from '../services/routePlanner';
 import type { PlannedRoute } from '../services/routePlanner';
 import { evaluateZonesAtPoint } from '../services/geo/pointInPolygon';
 import type { ZoneHit } from '../services/geo/pointInPolygon';
+import { DEFAULT_ALTITUDE_BAND_M } from '../services/altitudeBands';
 import type { BackendId } from '../services/dataBackend';
 
 export interface DashboardStore extends AppState {
@@ -26,6 +28,8 @@ export interface DashboardStore extends AppState {
   emergencyMode: boolean;
   flightDraftOpen: boolean;
   altitudeBandM: [number, number];
+  /** Active map altitude-band filter (PRD FR-OP-V6). Null = all bands. */
+  altitudeFilterM: [number, number] | null;
   /** Identifier of the data backend feeding the shell (M2 adapter seam). */
   backendId: BackendId;
   /** Route planned by the A* service for the flight draft, if any. */
@@ -39,6 +43,8 @@ export interface DashboardStore extends AppState {
   navigate: (section: NavSection) => void;
   selectDrone: (id: string) => void;
   toggleLayer: (layer: LayerId) => void;
+  /** PRD FR-OP-V6: engage/disengage the map altitude-band filter. */
+  setAltitudeFilter: (band: [number, number] | null) => void;
   setAltitudeBand: (band: [number, number]) => void;
   startFlightDraft: () => void;
   clearFlightDraft: () => void;
@@ -52,7 +58,7 @@ export interface DashboardStore extends AppState {
   /** Awards an open auction to its current top bid, releasing losing reservations. */
   awardTopBid: (auctionId: string) => void;
   /** Approves or rejects a pending flight approval request. */
-  decideApprovalRequest: (requestId: string, decision: 'approved' | 'rejected') => void;
+  decideApprovalRequest: (requestId: string, decision: 'approved' | 'rejected', reason?: string) => void;
 }
 
 const initialBackend: DataBackend = resolveBackend('mock');
@@ -80,7 +86,8 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   activeLayers: initialLayerState,
   emergencyMode: false,
   flightDraftOpen: false,
-  altitudeBandM: [60, 160],
+  altitudeBandM: [...DEFAULT_ALTITUDE_BAND_M] as [number, number],
+  altitudeFilterM: null,
   backendId: initialBackend.id,
   plannedRoute: null,
   routeZoneHits: [],
@@ -96,7 +103,8 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       activeLayers: initialLayerState,
       emergencyMode: false,
       flightDraftOpen: false,
-      altitudeBandM: [60, 160],
+      altitudeBandM: [...DEFAULT_ALTITUDE_BAND_M] as [number, number],
+      altitudeFilterM: null,
       plannedRoute: null,
       routeZoneHits: [],
       lastError: null,
@@ -124,9 +132,12 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     const currentLayers = get().activeLayers;
     set({ activeLayers: { ...currentLayers, [layer]: !currentLayers[layer] } });
   },
+  /** PRD FR-OP-V6: engage/disengage the map altitude-band filter. */
+  setAltitudeFilter: (band: [number, number] | null): void => set({ altitudeFilterM: band }),
   setAltitudeBand: (band: [number, number]): void => {
+    // PRD FR-OP-V6: the ceiling reaches 400 m; the floor must stay below it.
     const lowerBound = Math.max(0, Math.min(band[0], band[1] - 10));
-    const upperBound = Math.min(250, Math.max(band[1], lowerBound + 10));
+    const upperBound = Math.min(400, Math.max(band[1], lowerBound + 10));
     set({ altitudeBandM: [lowerBound, upperBound] });
   },
   startFlightDraft: (): void => set({ flightDraftOpen: true }),
@@ -195,10 +206,17 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       set({ lastError: error instanceof Error ? error.message : 'Award failed' });
     }
   },
-  decideApprovalRequest: (requestId: string, decision: 'approved' | 'rejected'): void => {
+  decideApprovalRequest: (requestId: string, decision: 'approved' | 'rejected', reason?: string): void => {
     const state = get();
     try {
-      const result = decideApproval(state.approvalRequests, state.wallets, requestId, decision, state.lastUpdatedIso);
+      const result: ApprovalDecisionResult = decideApproval(
+        state.approvalRequests,
+        state.wallets,
+        requestId,
+        decision,
+        state.lastUpdatedIso,
+        reason,
+      );
       const nextApprovals: ApprovalRequest[] = state.approvalRequests.map((entry: ApprovalRequest): ApprovalRequest =>
         entry.id === requestId ? result.approval : entry,
       );
