@@ -26,8 +26,9 @@ related: []
 - [[t8-resume-session-drift-audit-mobile-disclosure-provider-default]] — T8 resume session - drift audit, mobile disclosure, provider default · status: done · 2026-09-26
 - [[t9-mapbox-tactical-overlay-and-prd-defects-1-4-5]] — T9 mapbox tactical overlay and prd defects 1-4-5 · status: done · 2026-09-26
 
-### Spec (1)
+### Spec (2)
 
+- [[project-north-star]] — BUSTARON v3 — Project North Star · status: active · 2026-09-27
 - [[m3-scope-backend-ledger-agents]] — M3 scope - backend, ledger, agents · status: draft · 2026-09-26
 
 ### Decision (4)
@@ -41,8 +42,9 @@ related: []
 
 - [[cad-ring-order-corruption-broke-rfz-containment]] — CAD ring-order corruption broke RFZ containment · status: fixed · 2026-09-26
 
-### Progress (2)
+### Progress (3)
 
+- [[settle-and-file-endpoints]] — M3 phase 2 — settle + file-approval endpoints · status: done · 2026-09-27
 - [[step-0-stabilization-audit-close-out]] — STEP 0 — Stabilization (orchestration run entry #0) · status: done · 2026-09-27
 - [[m3-documentation-session-progress]] — M3 documentation session progress · status: done · 2026-09-26
 
@@ -58,4 +60,4 @@ related: []
 - `bugs/` — Bug notes
 - `sessions/` — Session notes
 
-_13 note(s) · vault: `docs/vault`_
+_15 note(s) · vault: `docs/vault`_

@@ -50,18 +50,23 @@ STATE_LOCK = threading.Lock()
 # Types accepted by POST /chain/tx. Every entry here MUST have a dispatch branch
 # in submit_tx(); advertising a type the handler rejects produces a confusing
 # "400 Unsupported tx type" for an input the API schema said was valid.
-# AUCTION_SETTLE and APPROVAL_FILE were declared here but never implemented, so a
-# client could pass validation and then be rejected at runtime. They are removed
-# until the settle/file endpoints are actually built (tracked as M3 follow-up).
+# AUCTION_SETTLE and APPROVAL_FILE were once declared here without a handler; they
+# are now genuinely implemented (apply_settle / apply_file_approval) and so are
+# re-advertised. GENESIS stays out of this union: it is minted by seed_if_empty()
+# at first boot to anchor the chain, never submitted by a client.
 TXType = Literal[
     "AUCTION_BID",
     "AUCTION_AWARD",
     "APPROVAL_DECIDE",
+    "AUCTION_SETTLE",
+    "APPROVAL_FILE",
 ]
 
-# Types that exist in the domain but have no handler yet. Kept as a documented
-# allowlist so the omission is deliberate and greppable, not accidental.
-UNIMPLEMENTED_TX_TYPES = ("AUCTION_SETTLE", "APPROVAL_FILE", "GENESIS")
+# Types that exist in the domain but are deliberately NOT client-submittable.
+# Kept as a documented allowlist so the omission is deliberate and greppable,
+# not accidental. GENESIS is the only member: seed_if_empty() appends it once at
+# first boot, and no client may submit it.
+UNIMPLEMENTED_TX_TYPES = ("GENESIS",)
 
 
 def _hash(payload: dict[str, Any]) -> str:
@@ -264,6 +269,22 @@ class ApprovalPayload(BaseModel):
     reason: str | None = None
 
 
+class SettlePayload(BaseModel):
+    auctionId: str
+    ownerWalletId: str
+
+
+class FileApprovalPayload(BaseModel):
+    id: str
+    missionName: str
+    operator: str
+    walletId: str
+    creditsEscrowed: int
+    riskLevel: str = "low"
+    reason: str = ""
+    requestedAtIso: str = Field(default_factory=_now_iso)
+
+
 # --------------------------------------------------------------------- routes
 @app.get("/api/health")
 def health() -> dict[str, Any]:
@@ -328,6 +349,10 @@ def submit_tx(tx: Tx) -> dict[str, Any]:
             result = apply_award(state, AwardPayload(**tx.payload))
         elif tx.type == "APPROVAL_DECIDE":
             result = apply_approval_decision(state, ApprovalPayload(**tx.payload))
+        elif tx.type == "AUCTION_SETTLE":
+            result = apply_settle(state, SettlePayload(**tx.payload))
+        elif tx.type == "APPROVAL_FILE":
+            result = apply_file_approval(state, FileApprovalPayload(**tx.payload))
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported tx type: {tx.type}")
 
@@ -422,6 +447,96 @@ def apply_approval_decision(state: State, payload: ApprovalPayload) -> dict[str,
         {"id": f"ledger-{payload.approvalId}-{payload.decision}-{_now_ms()}", "walletId": wallet["id"], "deltaCredits": 0 if payload.decision == "approved" else approval["creditsEscrowed"], "reason": ledger_reason, "atIso": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())}
     )
     return {"approvalId": payload.approvalId, "decision": payload.decision, "state": state}
+
+
+def apply_settle(state: State, payload: SettlePayload) -> dict[str, Any]:
+    """Settles an awarded auction, burning the winner's reservation and crediting
+    the slot owner. Mirrors settleAuction() in src/services/creditsService.ts."""
+    auction = state.auctions.get(payload.auctionId)
+    if auction is None:
+        raise HTTPException(status_code=404, detail=f"Unknown auction: {payload.auctionId}")
+    if auction["status"] != "awarded" or not auction.get("winningBidId"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Auction {payload.auctionId} is not in the awarded state",
+        )
+    winning_bid = next(
+        (bid for bid in auction["bids"] if bid["id"] == auction["winningBidId"]), None
+    )
+    if winning_bid is None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Winning bid {auction['winningBidId']} missing from auction {payload.auctionId}",
+        )
+
+    winner = wallet_of(state, winning_bid["walletId"])
+    owner = wallet_of(state, payload.ownerWalletId)
+    credits = winning_bid["credits"]
+
+    # The winning reservation is burned on settlement, not returned to balance;
+    # the corridor owner receives the credits. Both effects are applied
+    # unconditionally and independently: when the winner and the owner are the
+    # SAME wallet (ownerWalletId is client-supplied and unvalidated) the burn and
+    # the credit both land — a deliberate net-zero move. Do NOT "optimise" this
+    # into a short-circuit: the client's settleAuction() had exactly that bug and
+    # it destroyed the credits while still writing the owner-credit ledger row.
+    winner["reservedCredits"] -= credits
+    owner["balanceCredits"] += credits
+    auction["status"] = "settled"
+    state.credit_ledger.append(
+        _ledger(
+            f"ledger-settle-{payload.auctionId}",
+            payload.ownerWalletId,
+            credits,
+            f"Settled auction {auction['slotName']}",
+        )
+    )
+    return {
+        "auctionId": payload.auctionId,
+        "ownerWalletId": payload.ownerWalletId,
+        "credits": credits,
+        "state": state,
+    }
+
+
+def apply_file_approval(state: State, payload: FileApprovalPayload) -> dict[str, Any]:
+    """Escrows credits for a newly filed flight approval request. Mirrors
+    fileApprovalRequest() in src/services/creditsService.ts."""
+    # Duplicate ids are rejected server-only: `state.approvals` is a dict keyed by
+    # id, so a duplicate would silently OVERWRITE the existing request (and its
+    # escrow) instead of sitting alongside it. The client's array-based store can
+    # hold duplicates and has no equivalent guard, so this 409 is deliberate and
+    # must not be mirrored back into the client.
+    if payload.id in state.approvals:
+        raise HTTPException(status_code=409, detail=f"Approval {payload.id} already exists")
+    wallet = wallet_of(state, payload.walletId)
+    if wallet["balanceCredits"] < payload.creditsEscrowed:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Insufficient credits to escrow {payload.creditsEscrowed}",
+        )
+
+    wallet["balanceCredits"] -= payload.creditsEscrowed
+    wallet["reservedCredits"] += payload.creditsEscrowed
+    state.approvals[payload.id] = {
+        "id": payload.id,
+        "missionName": payload.missionName,
+        "operator": payload.operator,
+        "walletId": payload.walletId,
+        "requestedAtIso": payload.requestedAtIso,
+        "status": "pending",
+        "riskLevel": payload.riskLevel,
+        "creditsEscrowed": payload.creditsEscrowed,
+        "reason": payload.reason,
+        "decisionReason": None,
+    }
+    return {
+        "approvalId": payload.id,
+        "status": "pending",
+        "walletId": payload.walletId,
+        "creditsEscrowed": payload.creditsEscrowed,
+        "state": state,
+    }
 
 
 # ------------------------------------------- frontend adapter read endpoints

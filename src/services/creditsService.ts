@@ -195,13 +195,22 @@ export function settleAuction(
   const credits = winningBid.credits;
 
   const nextWallets = wallets.map((entry: CreditWallet): CreditWallet => {
-    if (entry.id === winningBid.walletId) {
-      return { ...entry, reservedCredits: entry.reservedCredits - credits };
+    const isWinner = entry.id === winningBid.walletId;
+    const isOwner = entry.id === ownerWalletId;
+    if (!isWinner && !isOwner) {
+      return entry;
     }
-    if (entry.id === ownerWalletId) {
-      return { ...entry, balanceCredits: entry.balanceCredits + credits };
-    }
-    return entry;
+    // When the winning bidder and the slot owner are the same wallet BOTH effects
+    // must apply: the reservation is burned and the same wallet is credited, a
+    // net-zero move. This path is reachable because `ownerWalletId` is
+    // caller-supplied and unvalidated. The previous short-circuit returned on the
+    // winner branch, so a self-settle credited nobody and destroyed `credits`
+    // while still emitting a +credits owner ledger row.
+    return {
+      ...entry,
+      reservedCredits: isWinner ? entry.reservedCredits - credits : entry.reservedCredits,
+      balanceCredits: isOwner ? entry.balanceCredits + credits : entry.balanceCredits,
+    };
   });
   void owner;
 

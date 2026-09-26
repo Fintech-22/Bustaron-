@@ -112,6 +112,28 @@ describe('settleAuction', () => {
     expect(settled.ledgerEntries[0].deltaCredits).toBe(80);
   });
 
+  it('applies both the burn and the credit when the winner is the slot owner', () => {
+    // Regression: settleAuction early-returned on the winner branch, so a
+    // self-settle (winner == owner, reachable — ownerWalletId is caller-supplied)
+    // credited nobody and destroyed `credits` while still writing a +credits
+    // owner ledger row. Both effects must apply and the total must be unchanged.
+    let auction = seedAuction();
+    let wallets = seedWallets();
+    const bid = placeBid([auction], wallets, 'a1', 'w1', 80, '2026-09-26T00:00:00Z');
+    const award = awardAuction(bid.auctions, bid.wallets, 'a1', '2026-09-26T00:01:00Z');
+    auction = award.auction;
+    wallets = award.wallets;
+    const totalBefore = wallets.reduce((sum, w) => sum + w.balanceCredits + w.reservedCredits, 0);
+
+    const settled = settleAuction([auction], wallets, 'a1', 'w1', '2026-09-26T00:03:00Z');
+    const winnerOwner = settled.wallets.find((w) => w.id === 'w1')!;
+    expect(winnerOwner.reservedCredits).toBe(0); // 80 burned
+    expect(winnerOwner.balanceCredits).toBe(500); // 420 + 80 credited back
+    const totalAfter = settled.wallets.reduce((sum, w) => sum + w.balanceCredits + w.reservedCredits, 0);
+    expect(totalAfter).toBe(totalBefore); // net-zero: nothing destroyed
+    expect(settled.ledgerEntries[0].deltaCredits).toBe(80);
+  });
+
   it('rejects settlement of an auction that is not awarded', () => {
     expect(() => settleAuction([seedAuction()], seedWallets(), 'a1', 'w2', 'x')).toThrow(/not in the awarded state/);
   });
