@@ -213,9 +213,41 @@ export function planRoute(start: GeoPoint, goal: GeoPoint, options: PlanRouteOpt
     }
   }
 
-  const startKey = `${startCol}:${startRow}`;
-  const goalKey = `${goalCol}:${goalRow}`;
-  if (!freeNodes.has(startKey) || !freeNodes.has(goalKey)) {
+  // A clear start/goal can still snap to a lattice node that sits inside a
+  // zone margin. Fall back to the nearest free node within 2 lattice steps so
+  // viable endpoints are not rejected outright; the exact point is spliced
+  // back into the final polyline either way.
+  const nearestFreeNode = (col: number, row: number): string | null => {
+    if (freeNodes.has(`${col}:${row}`)) {
+      return `${col}:${row}`;
+    }
+    for (let radius = 1; radius <= 2; radius += 1) {
+      let bestKey: string | null = null;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (let dRow = -radius; dRow <= radius; dRow += 1) {
+        for (let dCol = -radius; dCol <= radius; dCol += 1) {
+          const key = `${col + dCol}:${row + dRow}`;
+          const node = freeNodes.get(key);
+          if (!node) {
+            continue;
+          }
+          const distance = planarDistanceM(node.vertex, col === startCol && row === startRow ? startVertex : goalVertex);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestKey = key;
+          }
+        }
+      }
+      if (bestKey) {
+        return bestKey;
+      }
+    }
+    return null;
+  };
+
+  const startKey = nearestFreeNode(startCol, startRow);
+  const goalKey = nearestFreeNode(goalCol, goalRow);
+  if (!startKey || !goalKey) {
     throw new Error('No compliant route: start or goal falls inside a restricted-zone margin');
   }
 

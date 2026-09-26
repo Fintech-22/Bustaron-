@@ -4,11 +4,15 @@ import { planDraftRoute, useDashboardStore } from '../../store/dashboardStore';
 import type { Mission, MissionStatus, RiskLevel } from '../../types/domain';
 import type { ZoneHit } from '../../services/geo/pointInPolygon';
 
+// Demo endpoints verified clear of every CAD RFZ margin; routes between them
+// exercise real A* detours against the ingested zone pack.
 const draftLocations: { name: string; point: { lat: number; lng: number } }[] = [
   { name: 'Central pier', point: { lat: 22.286, lng: 114.157 } },
-  { name: 'Victoria Harbour east', point: { lat: 22.295, lng: 114.185 } },
-  { name: 'Kowloon East yard', point: { lat: 22.32, lng: 114.21 } },
-  { name: 'Sha Tin helipad', point: { lat: 22.381, lng: 114.193 } },
+  { name: 'Aberdeen south', point: { lat: 22.262, lng: 114.155 } },
+  { name: 'Lei Yue Mun east', point: { lat: 22.29, lng: 114.247 } },
+  { name: 'West Lamma channel', point: { lat: 22.262, lng: 114.1 } },
+  { name: 'Stonecutters west', point: { lat: 22.32, lng: 114.12 } },
+  { name: 'Kwun Tong promenade', point: { lat: 22.312, lng: 114.225 } },
 ];
 
 function ZoneHitList({ hits }: { hits: ZoneHit[] }): JSX.Element {
@@ -52,7 +56,7 @@ export function MissionPanel({ expanded = false }: MissionPanelProps): JSX.Eleme
   const clearFlightDraft = useDashboardStore((state) => state.clearFlightDraft);
   const setAltitudeBand = useDashboardStore((state) => state.setAltitudeBand);
   const [originName, setOriginName] = useState(draftLocations[0].name);
-  const [destinationName, setDestinationName] = useState(draftLocations[1].name);
+  const [destinationName, setDestinationName] = useState(draftLocations[5].name);
   const origin = draftLocations.find((entry) => entry.name === originName) ?? draftLocations[0];
   const destination = draftLocations.find((entry) => entry.name === destinationName) ?? draftLocations[1];
   const sectionTitle = expanded ? 'Mission planning workspace' : 'Mission queue';

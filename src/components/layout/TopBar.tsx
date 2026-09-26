@@ -1,4 +1,5 @@
 import type { NavSection, UserRole } from '../../types/domain';
+import { useDashboardStore } from '../../store/dashboardStore';
 
 interface TopBarProps {
   activeRole: UserRole;
@@ -25,6 +26,9 @@ export function TopBar({
   onRoleChange,
   onEmergency,
 }: TopBarProps): JSX.Element {
+  const backendLabel = useDashboardStore((state) =>
+    state.backendId === 'cad-geojson' ? 'CAD RFZ GeoJSON (135 zones)' : 'Mock replay',
+  );
   const updatedAt: string = new Intl.DateTimeFormat('en-HK', {
     hour: '2-digit',
     minute: '2-digit',
@@ -36,11 +40,11 @@ export function TopBar({
   return (
     <header className="top-bar">
       <div>
-        <p className="panel__eyebrow">Milestone 1 · mock-only shell</p>
+        <p className="panel__eyebrow">Milestone 2 · planning + data adapters</p>
         <h1>{sectionTitleById[activeSection]}</h1>
         <div className="top-bar__meta" aria-label="Operational status">
           <span>Region: Hong Kong schematic</span>
-          <span>Data: deterministic mock replay</span>
+          <span>Data source: {backendLabel}</span>
           <span>Updated: {updatedAt}</span>
         </div>
       </div>

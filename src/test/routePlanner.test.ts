@@ -57,9 +57,18 @@ describe('planRoute', () => {
     }
   });
 
-  it('throws when start is inside a restricted margin', () => {
-    const zone = squareRfz(start.lat, start.lng, 0.02);
+  it('throws when start is deep inside a restricted zone with no nearby free node', () => {
+    // Large enough that the nearest free node is beyond the 2-step fallback.
+    const zone = squareRfz(start.lat, start.lng, 0.12);
     expect(() => planRoute(start, goal, { zones: [zone] })).toThrow(/restricted/i);
+  });
+
+  it('recovers when start is near but not inside a zone edge', () => {
+    // Start just outside a small zone: snapping may land on a blocked node,
+    // but the nearest-free-node fallback must still find a route.
+    const zone = squareRfz(start.lat + 0.008, start.lng + 0.008, 0.012);
+    const route = planRoute(start, goal, { zones: [zone] });
+    expect(route.clearOfRestrictedZones).toBe(true);
   });
 
   it('throws when no path exists (goal walled inside a large zone)', () => {
