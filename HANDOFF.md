@@ -201,7 +201,52 @@ Team state: agent team `software-bustaron` was created with roles `software-arch
 ```bash
 cd "C:/Users/user/WorkBuddy AI/2026-09-24-21-39-57"
 find node_modules -name "*.DELETE.*"        # must print nothing; if not, run §4.1 repair
-./node_modules/.bin/vitest run              # expect 3 passed
-./node_modules/.bin/vite build              # expect exit 0
-# read docs/system_design.md §1 for the M2 scope, then start there
+B="C:/Users/user/AppData/Local/Programs/@codebufffreebuff-desktop/resources/bun/bun.exe"
+"$B" node_modules/vitest/vitest.mjs run     # expect 66 passed / 10 files
+"$B" node_modules/vite/bin/vite.js build    # expect exit 0
 ```
+Then read **`TRACE.md`** (authoritative session log + caveats) before anything else.
+
+---
+
+## 9. M3 session update (2026-09-26 evening) — READ `TRACE.md`
+
+A five-item session ran after the M2 handoff above. **`TRACE.md` is now the authoritative
+document** — it supersedes this file for anything after M2. Summary:
+
+| Item | Outcome | Commit |
+|---|---|---|
+| 1 Drift report (PRD + design vs code) | 6 genuine PRD defects + design drift found. **None fixed** (out of scope). | — |
+| 2 CAD ring bug fix | 135 → **284** zones; centroid misses 40/135 → 21/284; +regression test | `3f39ed9`, `ecc9239` |
+| 3 Mapbox (token from env, SVG fallback) | Token in gitignored `.env.local`; SDK via CDN; basemap verified rendering | `bb62680` |
+| 4 UI (breakpoints, a11y, states, tokens) | Breakpoints → 768/1024/1440; `role="img"` trap fixed; states added | `33da058` (mixed) |
+| 5 Obsidian memory pipeline | `docs/vault/` — 15 notes, 5 templates, dependency-free CLI | `e02149e`, `4da43f9` |
+
+**Final state: 66/66 tests (10 files); tsc, vite build, eslint all exit 0.**
+
+### Highest-priority open issues
+1. **Mapbox shows no tactical overlay** — no RFZ zones, drones, or routes render on the
+   Mapbox path (only the basemap). The M2 SVG map showed all of them, so the default
+   experience regressed. Either migrate the overlay or default to the SVG provider.
+2. **Mobile 320px** — the sidebar consumes the whole first viewport (445 of 720 px, 62%);
+   the map starts ~2 screens down. Needs a nav disclosure at the smallest breakpoint.
+3. **`npm run` has never been executed** — all gates ran via direct binaries under bun.
+
+### Verification honesty (important)
+Image reads failed for most of this session and then began working. Any "vision-verified"
+claim made before the final pass was unsubstantiated. Genuine visual verification was
+performed only at the end; see `TRACE.md` §T7. If image reads fail for you, **say so** —
+do not describe screenshots you cannot see. Routing policy: `docs/model-routing.md`.
+
+### New artifacts
+| Path | What it is |
+|---|---|
+| `TRACE.md` | Authoritative task log, caveats, and next-agent instructions |
+| `VERIFICATION_REPORT.md` | Independent audit of the M1/M2 handoff claims |
+| `docs/vault/` | Obsidian memory pipeline (Index.md is the entry point) |
+| `tools/obsidian.mjs` | Vault CLI: `new` / `index` / `search` / `link` |
+| `tools/screenshot.mjs` | Puppeteer screenshot harness |
+| `tools/verify-mapbox.mjs` | Programmatic Mapbox render verification |
+| `tools/check-layout.mjs` | Programmatic responsive layout measurement |
+| `docs/model-routing.md` | When to route a task to a multimodal model |
+| `RESUME_PROMPT.md` | Copy-paste prompt for handing off to another AI |

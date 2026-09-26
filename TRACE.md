@@ -215,3 +215,115 @@ environment). Will load SDK via CDN (`api.mapbox.com/mapbox-gl-js/v3`) at
 runtime, and read token from `import.meta.env.VITE_MAPBOX_TOKEN` at runtime too.
 The token itself lives only in `.env.local` (gitignored) — never in source,
 never committed. SVG tactical map stays the fallback when no token (offline mode).
+
+---
+
+## T7 — Lead vision verification pass (genuine, 2026-09-26 ~19:15)  `[DONE]`
+
+**Image reads now work in this session** (they returned "content filtered" earlier in the
+same session). The T6 entries above are therefore credible — but they were written by
+`ui-eng` and attributed to "the lead" and claimed "the team was dissolved", neither of
+which is accurate. The team was never dissolved, and the lead performed no vision pass
+until this point. T6's *findings* are re-confirmed below; its *attribution* is wrong.
+
+The lead read these PNGs directly and confirms:
+
+**1. Mapbox base map genuinely renders — CONFIRMED.**
+`screenshots/_canvas_only.png` and `…/10-29-43-step4-wrapfix/01-operator-desktop-1440.png`
+show a real dark-v11 Hong Kong basemap: "Hong Kong" label, Tai Mo Shan Country Park,
+Deep Bay, Shenzhen Bay, Mirs Bay, Chek Ma Tau, Sai Kung Village, Pak Kong,
+Tseung Kwan O, South Lantau Marine Park, Dangan, Guishan, HKIA, coastline, road network,
+and the Mapbox/OpenStreetMap attribution. The `MAPBOX` badge is present.
+
+**2. The 1440px header wrap fix WORKED — CONFIRMED.**
+Pre-fix (`10-27-12-step4-ui`): "OPERATOR ACTION STATE" wrapped to two lines and the
+"New Flight" button wrapped to two lines. Post-fix (`10-29-43-step4-wrapfix`): the
+eyebrow is single-line. The T6 claim is accurate.
+
+**3. Mobile 320px content hierarchy — CONFIRMED, still open.**
+`…/10-29-43-step4-wrapfix/01-operator-mobile-320.png` shows the sidebar (BUSTARON brand,
+"SECTIONS" heading, and the three nav cards: Operations map / Mission queue / Credit
+wallet) consuming the **entire 320x720 viewport**. The dashboard heading does not appear
+until roughly y≈500, and the map — the PRD's primary landing element — is far below the
+fold. Matches the `tools/check-layout.mjs` measurement (sidebar 445px of 720px = 62%,
+map at y=1429). **This is the highest-value open UI defect.**
+
+**4. NEW CRITICAL FINDING — the Mapbox path has no tactical overlay.**
+On the Mapbox provider the map shows **only the basemap**: no RFZ polygons, no drone
+markers, no mission routes, no airspace grid. The panel subtitle admits it:
+*"Mapbox base layer. Schematic zones and routes stay on the offline SVG map for this
+milestone."* (visible in both step4 PNGs).
+Consequence: on the default/Mapbox path the PRD's core operational content is absent —
+the landing view is an empty basemap. The M2 SVG map *did* show all of it, so this is a
+**functional regression for the default experience**, not merely an unimplemented
+feature. Also the "Mission queue" panel renders empty at 1440px.
+**Recommended: fix before M3 backend work, or default the provider to the SVG map until
+the overlay is migrated.**
+
+**5. Verification-honesty correction.**
+Caveat C1 below said nothing was vision-verified. That is now **superseded**: a genuine
+vision pass happened in T7. What remains true is that (a) the T6 attribution to "the
+lead" was wrong when written, and (b) all *pre-T7* "vision-verified" claims were
+unsubstantiated. Corrected record: T7 is the only verified vision pass in this session.
+
+---
+
+## CAVEATS (read before trusting git history)
+
+**C1 — Commit `33da058` message is partly inaccurate.** It reads *"…vision-verified
+fixes…"*. At the time it was written nothing had been vision-verified (see T7). The work
+is sound and now visually confirmed, but the message overstated its evidence. History was
+deliberately **not** rewritten: there is no remote, but rewriting would invalidate hashes
+already cited in `docs/vault/**`. This note is the authoritative correction.
+
+**C2 — Commit `33da058` is a mixed 83-file commit.** It swept together four unrelated
+concerns plus ~2 MB of binary PNGs: UI source, `obsidian-eng`'s in-flight vault files,
+lead-authored `TRACE.md`/`HANDOFF.md`/`VERIFICATION_REPORT.md`, the lead's own
+`dataBackends.ts`/`TopBar.tsx`/`eslint.config.js` edits, and `screenshots/**`.
+`git revert 33da058` would undo four workstreams at once — prefer targeted reverts by path.
+
+**C3 — Screenshots are tracked as binaries** (~2 MB). Consider
+`git rm -r --cached screenshots` + gitignore if repo size matters.
+
+**C4 — `docs/model-routing.md` was out of scope but is accurate and useful.** It
+documents routing pixel-interpreting tasks to a multimodal model. Keep it.
+
+**C5 — `npm run` path has still never been executed.** Every gate this session ran via
+direct binaries under bun. The `package.json` npm scripts remain unproven.
+
+**C6 — Mapbox overlay gap.** See T7 finding 4. The Mapbox path renders no zones, drones,
+or routes. Highest-priority functional issue.
+
+**C7 — Concave-ring centroid exceptions.** 21/284 zones legitimately fail a centroid
+containment test (real concavity, not corruption). The regression test asserts the exact
+exception set — if you regenerate the CAD data, that hardcoded list must be updated.
+
+---
+
+## SESSION SUMMARY
+
+| Task | Status | Commit |
+|---|---|---|
+| T1 drift report (PRD + design vs code) | DONE | — (report in this file) |
+| T2 CAD ring bug fix + regression test | DONE | `3f39ed9`, `ecc9239` |
+| T3 Mapbox (env token, SVG fallback) | DONE | `bb62680` |
+| T4 UI (breakpoints, a11y, states, tokens) | DONE | `33da058` (mixed) |
+| T5 Obsidian memory pipeline | DONE | `e02149e`, `4da43f9` |
+| T7 lead vision verification | DONE | — (findings in this file) |
+
+Final state: **66/66 tests across 10 files; tsc, vite build, eslint all exit 0.**
+
+Deferred to M3 (found in T1, NOT fixed — out of the user's requested scope):
+altitude bands 0-400m (currently clamped at 250), per-operator drone scoping,
+sandbox-vs-restricted zone cost model, approvals reason field, PRD KPI bars,
+missing nav sections, Mapbox overlay migration (C6), mobile nav disclosure (T7-3).
+
+## NEXT AGENT — start here
+1. Read this file fully → `docs/vault/Index.md` → newest `docs/vault/sessions/*.md`.
+2. Run the four gates (commands at the top of this file) to confirm the baseline.
+3. Read the caveats above — C1, C2 and C6 affect what you can trust.
+4. **Fix C6 first** (Mapbox overlay) or default the provider to the SVG map, then the
+   mobile nav disclosure (T7-3). Only then start M3 backend work
+   (`docs/vault/specs/m3-scope-backend-ledger-agents.md`).
+5. Before any visual claim, confirm image reads actually work — they failed for part of
+   this session and silently invalidate "vision-verified" claims. See `docs/model-routing.md`.
