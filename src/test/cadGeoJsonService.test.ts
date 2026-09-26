@@ -17,14 +17,50 @@ function centroid(polygon: GeoPoint[]): GeoPoint {
 }
 
 /**
+ * Rings whose vertex centroid legitimately falls outside the ring because the
+ * outline is strongly concave (racecourses, firing ranges, border control points,
+ * the HK-Zhuhai-Macau bridge corridor). 20 of these 22 already fail the same
+ * check against their *unsimplified* rings in the source `map.geojson`, so this
+ * is a property of the surveyed geometry, not of ingestion. The remaining two
+ * (Marine Police RHQ, Kong Nga Po) are concave shapes whose notch is trimmed by
+ * the 48-point budget.
+ *
+ * The regression guard is the size of this list: the old farthest-point
+ * simplifier produced 48 misses out of 135 zones, so reintroducing it fails here.
+ */
+const CONCAVE_CENTROID_EXCEPTIONS: readonly string[] = [
+  "Cape D'Aguilar Radio Stations",
+  'China Ferry Terminal Control Point',
+  'Ha Tsuen / Deep Bay (Low-altitude Economy Regulatory Sandbox)',
+  'Happy Valley Racecourse',
+  'Hong Kong - Zhuhai - Macao Bridge Hong Kong Port and Hong Kong Link Road',
+  'Hong Kong - Zhuhai - Macao Bridge Hong Kong Port and Hong Kong Link Road',
+  'Hong Kong - Zhuhai - Macao Bridge Hong Kong Port and Hong Kong Link Road',
+  'Hong Kong Police Mount Butler Firing Range ',
+  'Hong Kong Science Park / Tolo Harbour / Ma On Shan (Low-altitude Economy Regulatory Sandbox)',
+  'Hong Kong Science Park / Tolo Harbour / Ting Kok (Low-altitude Economy Regulatory Sandbox)',
+  'Kong Nga Po Police Training Facilities ',
+  'Lei Muk Shue / Shek Lei / Lai Chi Kok (Low-altitude Economy Regulatory Sandbox)',
+  'Macau Ferry Terminal Control Point',
+  'Marine Police Regional Headquarters and Marine Police Harbour Divisional Headquarters',
+  'San Uk Ling Firing Range',
+  'Sha Tau Kok Control Point',
+  'Sha Tin Racecourse',
+  'Sheung Shui / Fanling (Low-altitude Economy Regulatory Sandbox)',
+  'Sheung Shui Treatment Works (Low-altitude Economy Regulatory Sandbox)',
+  'Smugglers Ridge Firing Range',
+  'Ta Kwu Ling Division Border Enforcement Unit Block',
+  'Tai O Barracks',
+];
+
+/**
  * Deterministic interior point via a horizontal scanline sweep.
  *
- * A vertex centroid is not usable here: 22 of the 284 CAD rings are concave
- * enough (racecourses, firing ranges, border control points) that their centroid
- * legitimately lies outside the ring — and they already do so in the untouched
- * source `map.geojson`, so it is a property of the geometry, not of ingestion.
  * The sweep walks candidate latitudes across the bounding box, intersects the
- * ring, and returns the midpoint of the first span that really is inside.
+ * ring, and returns the midpoint of the first span that really is inside. Unlike
+ * the centroid this is always interior for a valid ring, but it is also always
+ * satisfiable by a self-intersecting sawtooth, so it is a *validity* check while
+ * the centroid test below is the *corruption* check.
  */
 function interiorPoint(polygon: GeoPoint[]): GeoPoint | null {
   const ring = polygon.length > 1 && polygon[0].lat === polygon[polygon.length - 1].lat
@@ -73,10 +109,14 @@ describe('cadGeoJsonService', () => {
   });
 
   it('keeps ring order intact so zones are not self-intersecting sawtooths', () => {
-    // 22 of 284 rings are concave enough that the vertex centroid falls outside
-    // (they do in the source data too); every other ring must contain it.
-    const centroidMisses = zones.filter((zone) => !pointInPolygon(centroid(zone.polygon), zone.polygon));
-    expect(centroidMisses.length).toBeLessThanOrEqual(22);
+    // A ring whose vertices still trace the perimeter contains its own centroid
+    // unless it is genuinely concave. The old farthest-point simplifier left 48
+    // of 135 rings failing this; only the surveyed concave outlines may remain.
+    const misses = zones
+      .filter((zone) => !pointInPolygon(centroid(zone.polygon), zone.polygon))
+      .map((zone) => zone.name)
+      .sort();
+    expect(misses).toEqual([...CONCAVE_CENTROID_EXCEPTIONS].sort());
   });
 
   it('tags every zone as an RFZ with CAD designation metadata', () => {
