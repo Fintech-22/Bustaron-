@@ -327,3 +327,40 @@ missing nav sections, Mapbox overlay migration (C6), mobile nav disclosure (T7-3
    (`docs/vault/specs/m3-scope-backend-ledger-agents.md`).
 5. Before any visual claim, confirm image reads actually work — they failed for part of
    this session and silently invalidate "vision-verified" claims. See `docs/model-routing.md`.
+
+---
+
+## T8 — Session close-out (2026-09-26 ~19:30)  `[DONE]`
+
+**Stray uncommitted edit resolved.** A working-tree change to
+`src/components/layout/SidebarNav.tsx` — exactly one line, `import { useState } from 'react';`,
+unused — was failing `eslint . --max-warnings=0`. No worker claimed authorship: `ui-eng`
+explicitly listed SidebarNav as "not touched", and `obsidian-eng`/`geo-eng`/`mapbox-eng`
+never edit `src/components/layout/`. It was dead code, so the lead reverted that single
+file with `git checkout --`. **Do not re-add it unless you actually use `useState`** — the
+`0 warnings` gate will fail.
+
+**Final verified state (commit `018d377`):**
+| Gate | Exit |
+|---|---|
+| `tsc -b` | 0 |
+| `eslint . --max-warnings=0` | 0 |
+| `vite build` | 0 |
+| `vitest run` | 0 — **66/66 across 10 files** |
+
+Working tree clean. Full commit history for this session:
+`3f39ed9` · `ecc9239` (CAD fix) → `bb62680` (Mapbox) → `33da058` (UI+vault, mixed) →
+`e02149e` · `4da43f9` (vault evidence) → `2349304` (UI evidence) → `018d377` (trace+revert).
+
+**Note on `2349304`:** `ui-eng` committed only *evidence* (audit JSON + screenshot manifest)
+because its source changes had already been swept into `33da058` by another agent. So the
+UI source lives in `33da058` and the UI evidence in `2349304` — a split worth knowing if you
+need to revert UI work selectively.
+
+**Reproducibility tips from `ui-eng` (verified, worth keeping):**
+- `VITE_MAPBOX_TOKEN=""` does **not** override `.env.local` (empty string loses to the file);
+  use a whitespace value to force the offline SVG path.
+- The dev server can fail under the sandbox (cannot write `node_modules/.vite` temp files).
+  Build to a temp `outDir` and use `vite preview` instead.
+- A `.mjs` file placed outside `tools/**` fails lint, because `eslint.config.js` only sets
+  node globals for `tools/**`. Keep ad-hoc Node scripts in `tools/` or add an ignore.
