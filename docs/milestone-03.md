@@ -173,7 +173,7 @@ never be serialised back to disk.
 | `bun scripts/probe_lifecycle.ts` | **38/38** |
 | `bun scripts/probe_routes.ts` | **42/42** |
 | `bun scripts/probe_m3_seam.ts` | **7/7** |
-| `python server/probe_api.py` | **63 assertions** (current; 41 pre-B2) |
+| `python server/probe_api.py` | **64 assertions** (current; 41 pre-B2) |
 
 `probe_api.py` is self-contained: it kills any listener on `:8000`, re-seeds from
 scratch, starts the server itself, and asserts absolute seed balances — so it is
@@ -189,7 +189,7 @@ repeatable.
   inject an unknown authority id, and **forge `txs` with every later `hash` recomputed**),
   the FR-B6 refusal (409 + durable tamper event), hostile-`sigs` boot survival, and the
   `/api/health` tamper surface — each asserting `chainValid` false AND the height
-  unchanged. **63 assertions** (up from 41).
+  unchanged. **64 assertions** (up from 41).
 - Independent reviewer harnesses covered the crypto core (19/19), a real-uvicorn
   HTTP + migration/tamper matrix (20/20) and the anchoring invariant (7/7).
 - The `vite build` gate must be run against a fresh output dir: emptying a

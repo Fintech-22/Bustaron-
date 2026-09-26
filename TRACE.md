@@ -1494,3 +1494,76 @@ the distinction is the whole point of the criterion:
 machine-selectable; (c) today the `TAMPER_DETECTED` literal appears in the log line only.
 
 **S3 = MET · S4 = PARTIAL.** Commit follows on `main` (Task #4). STEP 2 complete; STEP 3 (UI) next.
+
+---
+
+## [SUPERVISOR:poa-consensus] VERDICT — B2 (3-of-3 Proof-of-Authority) (2026-09-27)
+
+**PASS — independently corroborated.** The revision frozen at 03:56 and accepted at 04:05 is the
+revision I verified. All five pinned md5s re-checked on the **committed** tree and matched
+byte-for-byte:
+
+| file | md5 (frozen == committed) |
+|---|---|
+| `server/main.py` | `1f8c05738317a8b76c668ad21998e4c9` |
+| `server/authorities.py` | `c607de576a6f2ae0daaead9f766527a6` |
+| `server/probe_api.py` | `e680f4bd6364c92efcdad8ee7b23dcff` |
+| `.env.example` | `79d06c557f664981ca36ad98a52a898c` |
+| `.gitignore` | `626b3903ccaeb249f2ad53ce92d218dc` |
+
+This verdict is formed from the PRD (§9.1–§9.4, FR-B1/B4/B5/B6, S3–S4) and from **running** my own
+harnesses — not from the worker's or the reviewer's report.
+
+### Verified by RUNNING, on the committed revision
+
+| Check | Method | Result |
+|---|---|---|
+| Official `python server/probe_api.py`, `:8000`, sole runner, pristine | ×2 | **64 PASS / 0 FAIL**, exit 0, **byte-identical** logs (idempotent) |
+| Discriminating forgery (i): `sigs`-only tamper, hash+linkage intact | private port + private data dir | `/chain` → `valid:false` (B4.2) |
+| **Discriminating forgery (ii): `txs` rewritten + canonical hash recomputed + tail re-linked** | private port + private data dir | `/chain` → `valid:false` (B5.2) → **quorum is load-bearing; the probe is not a false green** |
+| Hostile `sigs` e2e (int / list / null / `schema_version:null`) | private port + private data dir | 200 + `valid:false`, **never a 500** (B7.1–B7.4) |
+| Hostile file **at boot** (import-time `load_state`) | private port + private data dir | node still **BOOTS**, reports invalid (B7.5) |
+| 2-of-3 quorum | private port + private data dir | `valid:false`, height unchanged (B8) |
+| **FR-B6** append-on-corrupt-chain | private port + private data dir | **409 refused**, height unchanged, nothing persisted (B10) |
+| **S4-minimal** surface | private port + private data dir | `/api/health` exposes `tamperDetected`+`chainFault`; **real server log** carries literal `TAMPER_DETECTED — block 1 hash does not match its contents` (B11, `verify_log_token`) |
+| `sigs` serialised on `GET /chain` and `GET /block/{h}` | private port + private data dir | 3 authority ids on every block (B1.2/B2.1/B2.2) |
+| Migration v1→v2 boot-order (3 traps) | in-process, private dir | genesis re-minted, **fresh** (never re-signed), file rewritten to v2 (A1.1–A1.8) |
+| Hostile-sigs crypto layer | in-process | `verify_quorum` → `False` for int/null/list/dict/bool, never raises (A2) |
+| Key determinism ×2 interpreters · env rotation · production gate | in-process | byte-identical sigs; per-authority rotation; no-seed production **refuses to boot** (A3) |
+| Gates: `tsc -b` · `eslint . --max-warnings=0` · `vite build` · `vitest run` | bun | **0 · 0 · 0 · 94/94 (14 files)** |
+
+### Scope rulings I own (recorded, not buried)
+
+- **S3 = MET.** 3-of-3 on every block incl. genesis; 2-of-3 and a rogue authority id both rejected.
+- **S4 = PARTIAL — I agree with the team lead, and decline to reclassify it as MET.** Detection is
+  green on **read** (`/api/health`) and **append** (FR-B6 409), but `GET /events` (S6) is unimplemented
+  and the durable record carries **no machine-readable event type**, so `TAMPER_DETECTED` is selectable
+  only by string-matching prose. A log line is not a delivery surface; redefining "event" to mean "any
+  durable record" would trade a criterion away — exactly what the north star forbids.
+- **§9.3 GENESIS-signer conflict (reading recorded in `docs/milestone-03.md`).** §9.3's table names the
+  genesis *signers* as "Admin + Drone A + Drone B", which conflicts with FR-B1's three PoA *authorities*.
+  We read §9.1/FR-B1 as governing the **consensus** signers and §9.3 as the genesis **payload** actors:
+  every block — genesis included — carries the 3-of-3 *authority* quorum, and drones stay signing
+  clients (FR-B2). This is a deliberate interpretation, recorded so it is reviewable, not a silent choice.
+
+### Process note (transparency)
+
+My first `:8000` re-run on the committed tree crashed with `RemoteDisconnected` at `/block/0` — the
+**documented `:8000` / `server/data/state.json` concurrency artefact, not a code defect**: a second
+official `server/probe_api.py` (and a new `reviewer-b4` isolated copy) were live at 04:12. I **stood
+down from `:8000` rather than race the shared resources**, and re-ran my three **isolated** harnesses
+(private port + private data dir) plus all four gates — all green. The official-probe evidence
+(64/64 ×2, byte-identical) stands from the frozen revision, whose md5s still match.
+
+### Score (1–5)
+
+| Axis | Score | Basis |
+|---|---|---|
+| Correctness | **5** | Discriminating vectors pass; hostile input survives; FR-B6 refuses; no 500s; migration + determinism green |
+| Verification independence | **5** | Private-port harnesses that do not reuse the worker's probe; PRD re-derived; the blocking defect was found by running, not reading |
+| Scope honesty | **5** | S4 held at PARTIAL; the §9.3 conflict recorded; no criterion traded away to look finished |
+
+**Residuals (non-blocking, carried forward):** (a) `GET /events` + a machine-readable event `type`
+(S6) — the reason S4 stays PARTIAL; (b) the probe is still **not concurrency-safe** (owns `:8000` +
+`state.json`), an environment footgun, not a code defect; (c) `.workbuddy-ai/memory/MEMORY.md` still
+showed the pre-B2 HEAD (`3f46335`) and `api 52/52` — refreshed in this close-out.
