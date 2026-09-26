@@ -1,0 +1,32 @@
+sequenceDiagram
+  participant U as Operator/Admin
+  participant A as AppShell
+  participant S as DashboardStore
+  participant M as MockDataService
+  participant T as TacticalMap
+  participant P as StatusPanels
+
+  U->>A: Open BUSTARON dashboard
+  A->>S: initialize()
+  S->>M: loadInitialState()
+  M-->>S: drones, missions, zones, alerts
+  S-->>A: ready state
+  A->>T: render map layers
+  A->>P: render KPIs and mission lists
+
+  U->>A: Switch Operator/Admin section
+  A->>S: update activeSection/role
+  S-->>A: derived visible nav and widgets
+  A->>P: render section-specific panels
+
+  U->>T: Select drone marker
+  T->>S: selectDrone(id)
+  S-->>T: selected drone state
+  S-->>P: selected drone details
+
+  loop Demo simulation tick
+    S->>M: simulateTick(currentState)
+    M-->>S: updated positions/statuses
+    S-->>T: refreshed markers/routes
+    S-->>P: refreshed alerts/KPIs
+  end

@@ -1,0 +1,70 @@
+classDiagram
+  class AppShell {
+    +activeRole: UserRole
+    +activeSection: NavSection
+    +render()
+    +setRole(role: UserRole)
+    +navigate(section: NavSection)
+  }
+  class NavigationItem {
+    +id: NavSection
+    +label: string
+    +role: UserRole
+  }
+  class Drone {
+    +id: string
+    +callsign: string
+    +position: GeoPoint
+    +altitudeM: number
+    +status: DroneStatus
+    +batteryPct: number
+  }
+  class Mission {
+    +id: string
+    +operator: string
+    +route: GeoPoint[]
+    +status: MissionStatus
+    +riskLevel: RiskLevel
+  }
+  class WeatherAlert {
+    +id: string
+    +type: string
+    +severity: RiskLevel
+    +area: GeoPolygon
+    +validUntil: string
+  }
+  class AirspaceZone {
+    +id: string
+    +name: string
+    +kind: string
+    +polygon: GeoPolygon
+    +restriction: string
+  }
+  class DashboardStore {
+    +drones: Drone[]
+    +missions: Mission[]
+    +weatherAlerts: WeatherAlert[]
+    +zones: AirspaceZone[]
+    +selectedDroneId?: string
+    +selectDrone(id: string)
+    +toggleLayer(layer: string)
+  }
+  class MockDataService {
+    +loadInitialState() AppState
+    +simulateTick(state: AppState) AppState
+  }
+  class TacticalMap {
+    +layers: string[]
+    +renderDrones(drones: Drone[])
+    +renderRoutes(missions: Mission[])
+    +renderZones(zones: AirspaceZone[])
+  }
+  AppShell --> DashboardStore : owns
+  AppShell --> NavigationItem : renders
+  DashboardStore --> MockDataService : hydrates from
+  DashboardStore "1" o-- "many" Drone
+  DashboardStore "1" o-- "many" Mission
+  DashboardStore "1" o-- "many" WeatherAlert
+  DashboardStore "1" o-- "many" AirspaceZone
+  TacticalMap --> DashboardStore : reads
+  Mission --> Drone : assigned candidate

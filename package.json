@@ -1,0 +1,37 @@
+{
+  "name": "bustaron-m1-tactical-shell",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npm exec --yes --package vite@5.4.11 --package @vitejs/plugin-react@4.3.4 --package react@18.3.1 --package react-dom@18.3.1 --package zustand@4.5.5 -- vite --host 0.0.0.0",
+    "build": "npm exec --yes --package typescript@5.6.3 --package vite@5.4.11 --package @vitejs/plugin-react@4.3.4 --package react@18.3.1 --package react-dom@18.3.1 --package zustand@4.5.5 -- tsc -b && npm exec --yes --package vite@5.4.11 --package @vitejs/plugin-react@4.3.4 --package react@18.3.1 --package react-dom@18.3.1 --package zustand@4.5.5 -- vite build",
+    "lint": "npm exec --yes --package eslint@9.17.0 --package @eslint/js@9.17.0 --package typescript-eslint@8.18.2 --package eslint-plugin-react-hooks@5.1.0 --package eslint-plugin-react-refresh@0.4.16 --package globals@15.14.0 -- eslint . --max-warnings=0",
+    "test": "npm exec --yes --package vitest@2.1.8 --package jsdom@25.0.1 --package @testing-library/react@16.1.0 --package @testing-library/jest-dom@6.6.3 --package react@18.3.1 --package react-dom@18.3.1 --package vite@5.4.11 --package @vitejs/plugin-react@4.3.4 --package typescript@5.6.3 --package zustand@4.5.5 -- vitest run"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "globals": "^15.14.0",
+    "jsdom": "^25.0.1",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.18.2",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  }
+}
