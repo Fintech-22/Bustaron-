@@ -42,8 +42,8 @@ const LAYER = {
   droneLabel: 'drone-label',
 } as const;
 
-/** Zone colour by kind: restricted red, sensitive purple, heliport blue, corridor cyan. */
-const ZONE_COLORS: unknown = ['match', ['get', 'kind'], 'rfz', '#fb7185', 'sensitive', '#c084fc', 'heliport', '#60a5fa', 'corridor', '#38bdf8', '#9fb0c5'];
+/** Zone colour by kind: restricted red, sandbox amber, sensitive purple, heliport blue, corridor cyan. */
+const ZONE_COLORS: unknown = ['match', ['get', 'kind'], 'rfz', '#fb7185', 'sandbox', '#fbbf24', 'sensitive', '#c084fc', 'heliport', '#60a5fa', 'corridor', '#38bdf8', '#9fb0c5'];
 
 const STATUS_COLORS: unknown = ['match', ['get', 'status'], 'warning', '#fbbf24', 'critical', '#ef4444', 'grounded', '#9fb0c5', '#4ade80'];
 
@@ -106,7 +106,7 @@ function buildOverlay(map: MapboxMapInstance): void {
     source: SOURCE.zones,
     paint: {
       'fill-color': ZONE_COLORS,
-      'fill-opacity': ['match', ['get', 'kind'], 'corridor', 0.08, 'heliport', 0.1, 0.18],
+      'fill-opacity': ['match', ['get', 'kind'], 'corridor', 0.08, 'heliport', 0.1, 'sandbox', 0.14, 0.18],
     },
   });
   map.addLayer({
@@ -206,8 +206,10 @@ function buildOverlay(map: MapboxMapInstance): void {
 /** Pushes current store state into the overlay sources + layer visibility. */
 function pushAll(map: MapboxMapInstance): void {
   const state = useDashboardStore.getState();
-  // FR-OP-V6: the altitude-band filter drops aircraft outside the band.
-  const visibleDrones = state.drones.filter((drone) => droneInBand(drone, state.altitudeFilterM));
+  // FR-OP-V6 band filter + §11.3.3 operator scoping (admin sees all).
+  const visibleDrones = state.drones
+    .filter((drone) => state.activeRole === 'admin' || drone.operatorId === state.currentOperatorId)
+    .filter((drone) => droneInBand(drone, state.altitudeFilterM));
   const data: [string, unknown][] = [
     [SOURCE.cells, skycellsToGeoJson(buildSkycells(state.drones, state.missions))],
     [SOURCE.zones, zonesToGeoJson(state.zones)],
@@ -298,6 +300,8 @@ export function MapboxMap(): JSX.Element {
           state.zones !== prev.zones ||
           state.activeLayers !== prev.activeLayers ||
           state.altitudeFilterM !== prev.altitudeFilterM ||
+          state.currentOperatorId !== prev.currentOperatorId ||
+          state.activeRole !== prev.activeRole ||
           state.selectedDroneId !== prev.selectedDroneId ||
           state.plannedRoute !== prev.plannedRoute
         ) {

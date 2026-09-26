@@ -36,6 +36,7 @@ export function dronesToGeoJson(drones: Drone[], selectedDroneId: string): unkno
       properties: {
         id: drone.id,
         callsign: drone.callsign,
+        operatorId: drone.operatorId,
         altitudeM: drone.altitudeM,
         status: drone.status,
         headingDeg: drone.headingDeg,

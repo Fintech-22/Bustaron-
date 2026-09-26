@@ -26,6 +26,7 @@ export const mockDrones: Drone[] = [
   {
     id: 'drone-hk-01',
     callsign: 'BSN-01',
+    operatorId: 'wallet-harbour',
     position: { lat: 22.303, lng: 114.171 },
     altitudeM: 118,
     status: 'nominal',
@@ -38,6 +39,7 @@ export const mockDrones: Drone[] = [
   {
     id: 'drone-hk-02',
     callsign: 'BSN-07',
+    operatorId: 'wallet-urban',
     position: { lat: 22.281, lng: 114.158 },
     altitudeM: 92,
     status: 'warning',
@@ -50,6 +52,7 @@ export const mockDrones: Drone[] = [
   {
     id: 'drone-hk-03',
     callsign: 'BSN-11',
+    operatorId: 'wallet-cargo',
     position: { lat: 22.337, lng: 114.201 },
     altitudeM: 142,
     status: 'nominal',
@@ -62,6 +65,7 @@ export const mockDrones: Drone[] = [
   {
     id: 'drone-hk-04',
     callsign: 'BSN-15',
+    operatorId: 'wallet-harbour',
     position: { lat: 22.318, lng: 114.134 },
     altitudeM: 0,
     status: 'grounded',

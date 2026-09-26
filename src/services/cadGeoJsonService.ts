@@ -1,5 +1,6 @@
 import cadRfzData from '../data/cadRfzData.json';
 import { polygonBounds } from './geo/pointInPolygon';
+import { SANDBOX_NAME_PATTERN } from './zoneClassification';
 import type { AirspaceZone, GeoPoint, RiskLevel } from '../types/domain';
 
 /**
@@ -51,11 +52,14 @@ export function loadCadZones(): AirspaceZone[] {
 
   const root: CadRoot = cadRfzData as unknown as CadRoot;
   cachedZones = root.features.map((feature: CadFeature): AirspaceZone => {
-    const riskLevel: RiskLevel = RISK_LEVEL_BY_TYPE[feature.type] ?? 'medium';
+    // The CAD pack's `type` field is "RFZ" for both classes; the sandbox
+    // designation lives in the zone NAME (PRD §5.3, defect 6).
+    const sandbox = SANDBOX_NAME_PATTERN.test(feature.name);
+    const riskLevel: RiskLevel = sandbox ? 'medium' : RISK_LEVEL_BY_TYPE[feature.type] ?? 'high';
     return {
       id: feature.id,
       name: feature.name,
-      kind: 'rfz',
+      kind: sandbox ? 'sandbox' : 'rfz',
       polygon: ringToPolygon(feature.ring.coords),
       restriction: `${feature.designation} · ${feature.effective}`,
       riskLevel,

@@ -45,6 +45,8 @@ export function TacticalMap(): JSX.Element {
   const activeLayers = useDashboardStore((state) => state.activeLayers);
   const selectedDroneId = useDashboardStore((state) => state.selectedDroneId);
   const altitudeFilterM = useDashboardStore((state) => state.altitudeFilterM);
+  const activeRole = useDashboardStore((state) => state.activeRole);
+  const currentOperatorId = useDashboardStore((state) => state.currentOperatorId);
   const plannedRoute = useDashboardStore((state) => state.plannedRoute);
   const selectDrone = useDashboardStore((state) => state.selectDrone);
   const toggleLayer = useDashboardStore((state) => state.toggleLayer);
@@ -136,7 +138,11 @@ export function TacticalMap(): JSX.Element {
             />
           )}
         </svg>
-        {activeLayers.drones && drones.filter((drone: Drone): boolean => droneInBand(drone, altitudeFilterM)).map((drone: Drone): JSX.Element => {
+        {activeLayers.drones && drones
+          // PRD §11.3.3: operators see own drones only; admin sees the system.
+          .filter((drone: Drone): boolean => activeRole === 'admin' || drone.operatorId === currentOperatorId)
+          .filter((drone: Drone): boolean => droneInBand(drone, altitudeFilterM))
+          .map((drone: Drone): JSX.Element => {
           const point: ProjectedPoint = projectPoint(drone.position);
           return (
             <DroneMarker

@@ -30,6 +30,8 @@ export interface DashboardStore extends AppState {
   altitudeBandM: [number, number];
   /** Active map altitude-band filter (PRD FR-OP-V6). Null = all bands. */
   altitudeFilterM: [number, number] | null;
+  /** The signed-in operator (PRD §11.3.3): operators see own drones only. */
+  currentOperatorId: string;
   /** Identifier of the data backend feeding the shell (M2 adapter seam). */
   backendId: BackendId;
   /** Route planned by the A* service for the flight draft, if any. */
@@ -43,6 +45,8 @@ export interface DashboardStore extends AppState {
   navigate: (section: NavSection) => void;
   selectDrone: (id: string) => void;
   toggleLayer: (layer: LayerId) => void;
+  /** PRD §11.3.3: impersonate an operator in the operator console. */
+  setOperator: (operatorId: string) => void;
   /** PRD FR-OP-V6: engage/disengage the map altitude-band filter. */
   setAltitudeFilter: (band: [number, number] | null) => void;
   setAltitudeBand: (band: [number, number]) => void;
@@ -88,6 +92,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   flightDraftOpen: false,
   altitudeBandM: [...DEFAULT_ALTITUDE_BAND_M] as [number, number],
   altitudeFilterM: null,
+  currentOperatorId: 'wallet-harbour',
   backendId: initialBackend.id,
   plannedRoute: null,
   routeZoneHits: [],
@@ -134,6 +139,8 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   },
   /** PRD FR-OP-V6: engage/disengage the map altitude-band filter. */
   setAltitudeFilter: (band: [number, number] | null): void => set({ altitudeFilterM: band }),
+  /** PRD §11.3.3: impersonate an operator in the operator console. */
+  setOperator: (operatorId: string): void => set({ currentOperatorId: operatorId }),
   setAltitudeBand: (band: [number, number]): void => {
     // PRD FR-OP-V6: the ceiling reaches 400 m; the floor must stay below it.
     const lowerBound = Math.max(0, Math.min(band[0], band[1] - 10));

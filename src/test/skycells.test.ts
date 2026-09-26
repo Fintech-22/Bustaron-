@@ -5,6 +5,7 @@ import type { Drone, Mission } from '../types/domain';
 const drone = (over: Partial<Drone> = {}): Drone => ({
   id: 'd1',
   callsign: 'T-01',
+  operatorId: 'wallet-harbour',
   position: { lat: 22.3, lng: 114.17 },
   altitudeM: 100,
   status: 'nominal',

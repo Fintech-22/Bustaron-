@@ -8,6 +8,7 @@ import {
   toPlanar,
 } from './geo/pointInPolygon';
 import type { LatLngVertex } from './geo/pointInPolygon';
+import { SANDBOX_COST_FACTOR } from './zoneClassification';
 
 /** Default clearance kept between a planned route and any restricted ring, in metres. */
 export const DEFAULT_ZONE_MARGIN_M = 60;
@@ -151,12 +152,19 @@ export interface PlanRouteOptions {
 export function planRoute(start: GeoPoint, goal: GeoPoint, options: PlanRouteOptions): PlannedRoute {
   const marginM = options.marginM ?? DEFAULT_ZONE_MARGIN_M;
   const spacingM = options.spacingM ?? GRID_SPACING_M;
-  // Only hard restrictions block planning; corridors are discounted routes and
-  // heliport zones merely require notification, so neither is an obstacle.
+  // Only hard restrictions block planning (PRD FR-FP2: restricted = infinite
+  // cost). Sandbox zones are permissible-with-authorization, so they are
+  // penalised (high cost) rather than excluded; corridors are discounted and
+  // heliport zones merely require notification.
   const blockingZones = options.zones.filter(
     (zone: AirspaceZone): boolean => zone.kind === 'rfz' || zone.kind === 'sensitive',
   );
   const obstacles = buildObstacles(blockingZones, marginM);
+  const sandboxZones = options.zones.filter((zone: AirspaceZone): boolean => zone.kind === 'sandbox');
+  const sandboxPolygons = sandboxZones.map((zone: AirspaceZone) => ({
+    bounds: polygonBounds(zone.polygon),
+    latLngRing: zone.polygon,
+  }));
 
   const corridorZones = options.zones.filter((zone: AirspaceZone): boolean => zone.kind === 'corridor');
   const corridorPolygons = corridorZones.map((zone: AirspaceZone) => ({
@@ -274,18 +282,27 @@ export function planRoute(start: GeoPoint, goal: GeoPoint, options: PlanRouteOpt
     return result;
   };
 
-  const insideCorridor = (vertex: LatLngVertex, latLng: { lat: number; lng: number }): boolean => {
-    for (const corridor of corridorPolygons) {
-      const b = corridor.bounds;
+  const insidePolygon = (
+    polygons: { bounds: ReturnType<typeof polygonBounds>; latLngRing: { lat: number; lng: number }[] }[],
+    vertex: LatLngVertex,
+    latLng: { lat: number; lng: number },
+  ): boolean => {
+    for (const polygon of polygons) {
+      const b = polygon.bounds;
       if (latLng.lat < b.minLat || latLng.lat > b.maxLat || latLng.lng < b.minLng || latLng.lng > b.maxLng) {
         continue;
       }
-      if (pointInPolygon(latLng, corridor.latLngRing)) {
+      if (pointInPolygon(latLng, polygon.latLngRing)) {
         return true;
       }
     }
     return false;
   };
+
+  const insideCorridor = (vertex: LatLngVertex, latLng: { lat: number; lng: number }): boolean =>
+    insidePolygon(corridorPolygons, vertex, latLng);
+  const insideSandbox = (vertex: LatLngVertex, latLng: { lat: number; lng: number }): boolean =>
+    insidePolygon(sandboxPolygons, vertex, latLng);
 
   let nodesExpanded = 0;
   let found = false;
@@ -318,7 +335,13 @@ export function planRoute(start: GeoPoint, goal: GeoPoint, options: PlanRouteOpt
       }
       const stepCost = planarDistanceM(node.vertex, nextNode.vertex);
       const nextLatLng = { lat: bounds.minLat + nextRow * latSpacing, lng: bounds.minLng + nextCol * lngSpacing };
-      const factor = insideCorridor(nextNode.vertex, nextLatLng) ? CORRIDOR_COST_FACTOR : 1;
+      // PRD FR-FP2: corridor transit is discounted, sandbox transit penalised.
+      let factor = 1;
+      if (insideCorridor(nextNode.vertex, nextLatLng)) {
+        factor = CORRIDOR_COST_FACTOR;
+      } else if (insideSandbox(nextNode.vertex, nextLatLng)) {
+        factor = SANDBOX_COST_FACTOR;
+      }
       const tentativeG = currentG + stepCost * factor;
       if (tentativeG < (gScores.get(nextKey) ?? Number.POSITIVE_INFINITY)) {
         gScores.set(nextKey, tentativeG);

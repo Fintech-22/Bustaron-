@@ -68,12 +68,11 @@ assert(
 
 planDraftRoute(central, kwunTong);
 st = useDashboardStore.getState();
-assert(
-  'refusal: Central -> Kwun Tong correctly refused (Victoria Harbour RFZ seals mid-harbour)',
-  st.plannedRoute === null && st.lastError !== null,
-  st.lastError ?? 'no error raised',
-);
-assert('refusal: error names the compliant-route failure', st.lastError !== null && st.lastError.toLowerCase().includes('route'), st.lastError ?? '');
+// T10 update: 'Victoria Harbour (Low-altitude Economy Regulatory Sandbox)'
+// now classifies as sandbox — the crossing is high-cost but PERMISSIBLE, so
+// a route exists (defect 3 fixed). The hard-refusal case moved to the
+// synthetic rfz-band test in defects.test.ts.
+assert('sandbox: Central -> Kwun Tong now routes across the sandbox harbour (defect 3 fixed)', st.plannedRoute !== null && st.lastError === null, st.lastError ?? 'no route');
 
 // ---------------------------------------------------------------- 2. credits
 const now = '2026-09-26T12:00:00.000Z';
@@ -146,6 +145,17 @@ const probeDrone = st.drones[0];
 assert('bands: droneInBand predicate edges inclusive', droneInBand(probeDrone, null) === true);
 const cells = buildSkycells(st.drones, st.missions);
 assert('skycells: deterministic lattice generated over HK bounds', cells.length > 100 && cells.every((cell) => cell.ring.length === 4));
+
+// --------------------------------- 4b. PRD defects 2/3/6 (sandbox + scoping)
+const { isSandboxZone } = await import('../src/services/zoneClassification');
+st = useDashboardStore.getState();
+const sandboxes = st.zones.filter((zone) => zone.kind === 'sandbox');
+const restricted = st.zones.filter((zone) => zone.kind === 'rfz');
+assert('defect 6: CAD pack split into sandbox + restricted kinds', sandboxes.length >= 20 && sandboxes.length + restricted.length === st.zones.length, `sandbox=${sandboxes.length} rfz=${restricted.length}`);
+assert('defect 6: every sandbox zone matches the name pattern', sandboxes.every((zone) => isSandboxZone(zone)));
+assert('defect 2: every drone carries an operatorId', st.drones.every((drone) => typeof drone.operatorId === 'string' && drone.operatorId.startsWith('wallet-')));
+const scoped = st.drones.filter((drone) => drone.operatorId === st.currentOperatorId);
+assert('defect 2: operator scope is a strict subset of the fleet', scoped.length > 0 && scoped.length < st.drones.length, `scoped=${scoped.length}/${st.drones.length}`);
 
 // ------------------------------------------------ 5. provider + seam integrity
 const backends = listAvailableBackends();

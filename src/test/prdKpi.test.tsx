@@ -20,10 +20,10 @@ describe('altitude bands (PRD FR-OP-V6 / S109)', () => {
   });
 
   it('classifies drones with the 400m top band inclusive', () => {
-    const drone = (altitudeM: number): Drone => ({
-      id: 'd', callsign: 'T', position: { lat: 22.3, lng: 114.17 }, altitudeM,
-      status: 'nominal', batteryPct: 90, missionId: 'm', headingDeg: 0, speedKph: 30, lastSeenIso: 'x',
-    });
+  const drone = (altitudeM: number): Drone => ({
+    id: 'd', callsign: 'T', operatorId: 'wallet-harbour', position: { lat: 22.3, lng: 114.17 }, altitudeM,
+    status: 'nominal', batteryPct: 90, missionId: 'm', headingDeg: 0, speedKph: 30, lastSeenIso: 'x',
+  });
     expect(droneInBand(drone(390), [320, 400])).toBe(true);
     expect(droneInBand(drone(400), [320, 400])).toBe(true);
     expect(droneInBand(drone(410), [320, 400])).toBe(false);
@@ -59,8 +59,8 @@ describe('altitude bands (PRD FR-OP-V6 / S109)', () => {
     act((): void => {
       useDashboardStore.setState({
         drones: [
-          { id: 'low', callsign: 'LOW', position: { lat: 22.3, lng: 114.17 }, altitudeM: 40, status: 'nominal', batteryPct: 80, missionId: 'm', headingDeg: 0, speedKph: 30, lastSeenIso: 'x' },
-          { id: 'high', callsign: 'HIGH', position: { lat: 22.3, lng: 114.17 }, altitudeM: 350, status: 'nominal', batteryPct: 80, missionId: 'm', headingDeg: 0, speedKph: 30, lastSeenIso: 'x' },
+          { id: 'low', callsign: 'LOW', operatorId: 'wallet-harbour', position: { lat: 22.3, lng: 114.17 }, altitudeM: 40, status: 'nominal', batteryPct: 80, missionId: 'm', headingDeg: 0, speedKph: 30, lastSeenIso: 'x' },
+          { id: 'high', callsign: 'HIGH', operatorId: 'wallet-harbour', position: { lat: 22.3, lng: 114.17 }, altitudeM: 350, status: 'nominal', batteryPct: 80, missionId: 'm', headingDeg: 0, speedKph: 30, lastSeenIso: 'x' },
         ],
         altitudeFilterM: [320, 400],
       });

@@ -119,9 +119,9 @@ describe('cadGeoJsonService', () => {
     expect(misses).toEqual([...CONCAVE_CENTROID_EXCEPTIONS].sort());
   });
 
-  it('tags every zone as an RFZ with CAD designation metadata', () => {
+  it('tags every zone as RFZ-or-sandbox with CAD designation metadata', () => {
     for (const zone of zones) {
-      expect(zone.kind).toBe('rfz');
+      expect(['rfz', 'sandbox']).toContain(zone.kind);
       expect(zone.restriction).toMatch(/Designated/);
     }
   });

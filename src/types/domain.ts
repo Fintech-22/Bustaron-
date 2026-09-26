@@ -20,6 +20,8 @@ export type GeoPolygon = GeoPoint[];
 export interface Drone {
   id: string;
   callsign: string;
+  /** Owning operator (PRD §11.3.3: operators see own drones, admin sees all). */
+  operatorId: string;
   position: GeoPoint;
   altitudeM: number;
   status: DroneStatus;
@@ -53,7 +55,8 @@ export interface WeatherAlert {
 export interface AirspaceZone {
   id: string;
   name: string;
-  kind: 'rfz' | 'heliport' | 'sensitive' | 'corridor';
+  /** PRD §5.3 taxonomy: sandbox zones are permissible with authorization. */
+  kind: 'rfz' | 'sandbox' | 'heliport' | 'sensitive' | 'corridor';
   polygon: GeoPolygon;
   restriction: string;
   riskLevel: RiskLevel;
