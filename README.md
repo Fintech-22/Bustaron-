@@ -22,11 +22,13 @@ see *Specification* below).
 | **M5** | Equipment / maintenance / training / incidents / customer portal | ⬜ not started |
 | **M6** | BVLOS operations, end-to-end hardening | ⬜ not started |
 
-M3 phase 1 ships a hash-chained append-only ledger, server-persisted state, and a
-transaction endpoint. Still outstanding for M3: the LLM agent negotiation protocol
-(PRD §8), 3-of-3 Proof-of-Authority multi-signer consensus (§9), a WebSocket `/events`
-stream (S6), the HKO weather poller (§5.2), an `AUCTION_SETTLE` server endpoint, and
-moving fleet/mission data server-side.
+M3 phase 1 ships a hash-chained append-only ledger, server-persisted state, a
+transaction endpoint (`AUCTION_BID`, `AUCTION_AWARD`, `APPROVAL_DECIDE`,
+`AUCTION_SETTLE`, `APPROVAL_FILE`) and **3-of-3 Proof-of-Authority consensus**
+(§9, S3): every block is co-signed by all three authorities and is only anchored —
+and only accepted on read — when that quorum verifies. Still outstanding for M3:
+the LLM agent negotiation protocol (PRD §8), a WebSocket `/events` stream (S6), the
+HKO weather poller (§5.2), and moving fleet/mission data server-side.
 
 ---
 
@@ -49,7 +51,8 @@ cp .env.example .env.local
 # then edit .env.local — see Environment variables below
 
 # 2. Python backend dependencies (already installed in this workspace)
-pip install --user fastapi uvicorn
+#    fastapi + uvicorn (HTTP) and cryptography (Ed25519 PoA signatures, PRD §9)
+python -m pip install -r requirements.txt
 ```
 
 `.env.local` is gitignored. **Never commit it.**
@@ -63,6 +66,10 @@ pip install --user fastapi uvicorn
 | `VITE_MAPBOX_TOKEN` | client | *(unset)* | Mapbox **public** (`pk.*`) token. Unset/blank ⇒ the offline SVG map is used. Anything with a `VITE_` prefix is inlined into the shipped bundle, so never put a secret token here. |
 | `VITE_M3_API_URL` | client | `http://127.0.0.1:8000` | Base URL of the M3 FastAPI backend. |
 | `BUSTARON_DATA_DIR` | server | `<repo>/server/data` | Directory holding `state.json`. Server-side only. |
+| `BUSTARON_ENV` | server | *(unset)* | Set to `production` to require explicit authority seeds. Server-side only. |
+| `BUSTARON_AUTHORITY_NODE_ADMIN_SEED` | server | *(derived)* | 64-hex (32-byte) Ed25519 seed for the `node:admin` authority. Unset ⇒ a deterministic dev seed is derived. Server-side only. |
+| `BUSTARON_AUTHORITY_NODE_AGENT_A_SEED` | server | *(derived)* | As above, for the `node:agent_a` authority. |
+| `BUSTARON_AUTHORITY_NODE_AGENT_B_SEED` | server | *(derived)* | As above, for the `node:agent_b` authority. |
 
 ---
 
@@ -104,7 +111,7 @@ B="C:/Users/user/AppData/Local/Programs/@codebufffreebuff-desktop/resources/bun/
 "$B" node_modules/typescript/bin/tsc -b                            # 1. types
 "$B" node_modules/vite/bin/vite.js build                           # 2. build
 "$B" node_modules/eslint/bin/eslint.js . --max-warnings=0          # 3. lint
-"$B" node_modules/vitest/vitest.mjs run                            # 4. tests — 93 tests / 14 files
+"$B" node_modules/vitest/vitest.mjs run                            # 4. tests — 94 tests / 14 files
 ```
 
 ### Behavioural probes
@@ -116,7 +123,7 @@ Beyond unit tests, these drive real behaviour end-to-end:
 | `bun scripts/probe_lifecycle.ts` | init, route planning, escrow, award, settle, approvals, altitude bands, skycells, operator scoping, seam registry | 38/38 |
 | `bun scripts/probe_routes.ts` | every ordered pair of named waypoints routes against the real 284-zone pack | 42/42 |
 | `bun scripts/probe_m3_seam.ts` | store → server transaction → chain anchor → re-hydrate | 7/7 (needs the API up) |
-| `python server/probe_api.py` | full API lifecycle, escrow math, 422/409 contracts, chain linkage, tamper detection, restart persistence | 22/22 |
+| `python server/probe_api.py` | full API lifecycle, escrow math, 422/409 contracts, chain linkage, 3-of-3 `sigs` quorum, four tamper vectors (txs / signature / 2-of-3 / unknown signer), restart persistence | 52/52 |
 
 `probe_api.py` is self-contained and idempotent: it kills any listener on `:8000`,
 re-seeds from scratch, starts the server itself, and asserts absolute seed balances —
@@ -153,12 +160,14 @@ src/
   styles/globals.css        design tokens + all styling
 server/
   main.py                   FastAPI app: ledger, state, /chain/tx, read endpoints
+  authorities.py            the 3 PoA authorities + Ed25519 sign/verify/quorum (PRD §9)
   probe_api.py              behavioural API probe
 scripts/
   generate_cad_data.py      CAD GeoJSON → compact zone pack
   probe_*.ts                behavioural probes
 tools/                      verification utilities (screenshots, layout, mapbox)
 docs/                       system design, milestones, Obsidian vault
+requirements.txt            M3 backend Python dependencies (fastapi, uvicorn, cryptography)
 ```
 
 ---

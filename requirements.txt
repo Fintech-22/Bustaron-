@@ -1,0 +1,11 @@
+# BUSTARON M3 backend — Python dependencies (see README.md §Setup).
+#
+#   python -m pip install -r requirements.txt
+#
+# Versions are pinned to the workspace-tested set so the ledger's signature
+# verification (server/authorities.py) stays reproducible: `cryptography` provides
+# the Ed25519 primitives used for the 3-of-3 Proof-of-Authority quorum (PRD §9).
+fastapi==0.141.1
+uvicorn==0.54.0
+cryptography==50.0.0
+pydantic==2.13.4

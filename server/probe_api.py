@@ -10,6 +10,7 @@ seed balances. Run it as many times as you like — the result is the same.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -18,6 +19,25 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+
+def _add_repo_root_to_path() -> None:
+    """Puts the repo root on sys.path so `server.authorities` is importable.
+
+    Run as a script, this probe's sys.path[0] is its OWN directory, where `server` is not a
+    package. Walk up to the first ancestor that holds server/authorities.py — this also
+    resolves correctly for the private-port copy under .workbuddy-ai/worker-poa/.
+    """
+    for ancestor in Path(__file__).resolve().parents:
+        if (ancestor / "server" / "authorities.py").is_file():
+            if str(ancestor) not in sys.path:
+                sys.path.insert(0, str(ancestor))
+            return
+
+
+_add_repo_root_to_path()
+
+from server.authorities import verify_quorum  # noqa: E402  (needs the sys.path bootstrap above)
 
 BASE = "http://127.0.0.1:8000"
 STATE_PATH = Path(__file__).resolve().parent / "data" / "state.json"
@@ -182,6 +202,49 @@ check("chain grew and stays valid after mutations", chain["height"] >= 4 and cha
 check("block links by prev_hash", all(chain["blocks"][i]["prev_hash"] == chain["blocks"][i - 1]["hash"] for i in range(1, len(chain["blocks"]))))
 check("single block endpoint works", get("/block/0")["height"] == 0)
 
+# ------------------------------------------------- 3-of-3 PoA signatures (B2)
+# PRD §9.2: every block carries a `sigs` map keyed by authority id. Assert the
+# 3-of-3 roster explicitly (PRD §9.1) — a 1-of-3 or 2-of-3 scheme must fail here.
+# This is the CONTRACT, so the ids are spelled out rather than imported. `GET /chain`
+# exposes the signatures verbatim: the north-star requires them to be AUDITABLE, not
+# hidden, and genesis is signed through the same path as every other block.
+AUTHORITY_IDS = ("node:admin", "node:agent_a", "node:agent_b")
+check(
+    "GET /chain exposes a 3-of-3 sigs quorum on every block",
+    all(
+        isinstance(block.get("sigs"), dict) and set(block["sigs"].keys()) == set(AUTHORITY_IDS)
+        for block in chain["blocks"]
+    ),
+    json.dumps(chain["blocks"][0].get("sigs")) if chain["blocks"] else "no blocks",
+)
+check(
+    "genesis block is 3-of-3 signed like any other block",
+    set(chain["blocks"][0].get("sigs", {}).keys()) == set(AUTHORITY_IDS),
+    json.dumps(chain["blocks"][0].get("sigs"))[:160],
+)
+check(
+    "every signature is a 64-byte Ed25519 signature (128 hex chars)",
+    all(len(sig) == 128 for block in chain["blocks"] for sig in block["sigs"].values()),
+    json.dumps(chain["blocks"][0].get("sigs"))[:160],
+)
+check("3-of-3 quorum verifies on the live chain (chainValid true)", chain["valid"] is True)
+
+# C1: `verify_quorum` is the defence-in-depth BEHIND the Block schema. Pydantic rejects a
+# non-mapping `sigs` (int / None / list / str) before this layer is reached, so drive the
+# primitive DIRECTLY: every such value must return False, never raise AttributeError on
+# `.keys()`. A raise is caught and reported as a FAIL rather than crashing the probe.
+try:
+    _c1_rejects_non_mapping = all(
+        verify_quorum("deadbeef", bad) is False for bad in (123, None, ["x"], "nope")
+    )
+except Exception:
+    _c1_rejects_non_mapping = False
+check(
+    "C1: verify_quorum returns False (never raises) for a non-mapping sigs",
+    _c1_rejects_non_mapping,
+    "a non-mapping sigs raised out of verify_quorum (expected False for 123 / None / ['x'] / 'nope')",
+)
+
 # --------------------------------------------------- settle + file approvals
 # These mutations are exercised BEFORE the tamper section below, which re-seeds
 # state.json from scratch. That keeps them from disturbing the absolute-balance
@@ -296,20 +359,196 @@ status, unaffordable = post("/chain/tx", {"type": "APPROVAL_FILE", "payload": {"
 check("file approval beyond balance but within balance+reserved refused with 422", status == 422, f"{status} {unaffordable}")
 
 # ------------------------------------------------------------ tamper detection
-kill_server()
-state = json.loads(STATE_PATH.read_text("utf-8"))
-if len(state["blocks"]) > 1:
+# Five independent tamper vectors, each applied to a FRESH deep copy of the SAME
+# good chain, so the vectors cannot contaminate one another:
+#   1. corrupt a block's `txs`            -> the stored hash no longer recomputes;
+#   2. corrupt one authority's signature  -> that quorum signature fails to verify;
+#   3. delete one signature (2-of-3)      -> the quorum is under-signed;
+#   4. add an unknown authority id        -> the signer roster is not the 3-of-3 set;
+#   5. corrupt `txs` AND re-derive every later block's `prev_hash`/`hash` -> the chain is
+#      hash-consistent again, so ONLY the authority quorum can reject it. This is the one
+#      a hash-only verifier would ACCEPT — it is what proves the quorum is enforced
+#      rather than decorative. (Vector P1.)
+# P2 (boot survival with a hostile `sigs`) and P3 (FR-B6 refusal of a write) follow below.
+# Every vector must make chainValid false AND leave the height unchanged: the
+# server REPORTS a tampered chain as invalid, it never silently re-seeds or
+# rewrites it (that would destroy the audit trail the chain exists to protect).
+def _canonical_hash(block: dict) -> str:
+    """Mirrors server `_hash()`: SHA-256 over the canonical JSON of the SIGNED fields.
+
+    `sigs` and `proposer` are deliberately excluded — they are not part of the signed
+    payload. The probe replicates this on purpose: vector 5 must be able to build a chain
+    that a HASH-ONLY verifier would accept.
+    """
+    payload = {
+        "height": block["height"],
+        "prev_hash": block["prev_hash"],
+        "ts_ms": block["ts_ms"],
+        "txs": block["txs"],
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def _corrupt_txs(state: dict) -> None:
+    """Vector 1: rewrite a historical block's transactions."""
     state["blocks"][1]["txs"] = [{"type": "TAMPER", "note": "malicious edit"}]
-    STATE_PATH.write_text(json.dumps(state), "utf-8")
-    start_server()
-    check("tampering detected on load (chainValid false)", get("/api/health")["chainValid"] is False)
-    # Restore a clean state for persistence test by re-seeding from scratch.
-    # Kill the still-running tampered server FIRST: without this, start_server()'s
-    # health probe is answered by the zombie, the fresh process fails to bind, and
-    # the doomed process still clobbers state.json from its import-time re-seed —
-    # which surfaced as a flaky "state survives restart" / "heights 2 -> 1".
-    reset_state_file()
+
+
+def _corrupt_signature(state: dict) -> None:
+    """Vector 2: replace one authority's signature with a well-formed-but-wrong one."""
+    sigs = state["blocks"][1]["sigs"]
+    victim = sorted(sigs)[0]
+    sigs[victim] = "0" * len(sigs[victim])
+
+
+def _drop_signature(state: dict) -> None:
+    """Vector 3: remove one signature, leaving an under-signed 2-of-3 block."""
+    sigs = state["blocks"][1]["sigs"]
+    del sigs[sorted(sigs)[0]]
+
+
+def _add_unknown_authority(state: dict) -> None:
+    """Vector 4: inject a 4th, unknown signer id."""
+    state["blocks"][1]["sigs"]["node:rogue"] = "0" * 128
+
+
+def _forge_txs_and_rehash(state: dict) -> None:
+    """P1 — the discriminating forgery vector: rewrite block 1's txs, then re-derive EVERY
+    later block's `prev_hash` and `hash` so the hash chain is internally consistent again.
+
+    The signatures still commit to the ORIGINAL hash, so only the quorum check catches
+    this. A hash-only verifier (linkage + recomputed hash, no signatures) would accept it —
+    neuter `verify_quorum` to `return True` and THIS vector stops failing. That is what
+    proves the authority signatures are load-bearing rather than decorative.
+    """
+    blocks = state["blocks"]
+    blocks[1]["txs"] = [{"type": "FORGED", "note": "rewritten and re-hashed"}]
+    prev = blocks[0]["hash"]
+    for block in blocks[1:]:
+        block["prev_hash"] = prev
+        block["hash"] = _canonical_hash(block)
+        prev = block["hash"]
+
+
+kill_server()
+good_state = json.loads(STATE_PATH.read_text("utf-8"))
+if len(good_state["blocks"]) > 1:
+    height_before_tamper = len(good_state["blocks"])
+
+    # Precondition for vector 5. If the mutator failed to re-hash consistently, the forged
+    # chain would be rejected for the WRONG reason (a broken hash chain) and the vector
+    # would stop discriminating a quorum-enforcing verifier from a hash-only one. Prove the
+    # fixture really is hash-consistent before relying on it.
+    _forged_fixture = json.loads(json.dumps(good_state))
+    _forge_txs_and_rehash(_forged_fixture)
+    check(
+        "forgery precondition: the forged chain's hashes are internally consistent",
+        all(
+            _forged_fixture["blocks"][i]["prev_hash"] == _forged_fixture["blocks"][i - 1]["hash"]
+            and _forged_fixture["blocks"][i]["hash"] == _canonical_hash(_forged_fixture["blocks"][i])
+            for i in range(1, len(_forged_fixture["blocks"]))
+        ),
+        "forged chain is not hash-consistent — vector 5 would pass for the wrong reason",
+    )
+
+    for label, mutate in (
+        ("txs tamper", _corrupt_txs),
+        ("corrupted signature", _corrupt_signature),
+        ("under-signed block (2-of-3)", _drop_signature),
+        ("unknown authority id", _add_unknown_authority),
+        ("forged txs with recomputed hashes (P1)", _forge_txs_and_rehash),
+    ):
+        tampered = json.loads(json.dumps(good_state))
+        mutate(tampered)
+        kill_server()
+        STATE_PATH.write_text(json.dumps(tampered), "utf-8")
+        start_server()
+        health = get("/api/health")
+        check(f"{label}: chainValid false", health["chainValid"] is False, json.dumps(health))
+        check(
+            f"{label}: height unchanged (chain not silently re-seeded)",
+            health["chainHeight"] == height_before_tamper,
+            f"{height_before_tamper} -> {health['chainHeight']}",
+        )
+
+    # The loop leaves a tampered chain serving. Use it (no extra server cycle) to assert the
+    # PRD S4 surface and the FR-B6 refusal (P3).
+    health = get("/api/health")
+    check(
+        "tamper state exposed on /api/health (chainValid false, tamperDetected true, fault names block 1)",
+        health["chainValid"] is False
+        and health["tamperDetected"] is True
+        and isinstance(health.get("chainFault"), str)
+        and "block 1" in health["chainFault"],
+        json.dumps(health),
+    )
+    height_before_refusal = health["chainHeight"]
+    wallets_before_refusal = get("/api/wallets")
+    events_before_refusal = health.get("tamperEventCount", 0)
+
+    # ---- P3 (FR-B6): a corrupt chain must REFUSE the write, not extend it ------------
+    # Before B2-3 the POST returned 200, grew the height 2 -> 3 and emitted no tamper event:
+    # corruption was only ever surfaced on READ. A detected integrity condition is a
+    # conflict with current state, not a server bug, so the status must be 409.
+    status, refused = post("/chain/tx", {"type": "AUCTION_BID", "payload": {"auctionId": "auction-vh-morning", "walletId": "wallet-harbour", "credits": 90}})
+    check("P3 FR-B6: appending to an invalid chain is refused with 409", status == 409, f"{status} {refused}")
+    check(
+        "P3 FR-B6: the 409 body carries tamperDetected true",
+        refused.get("tamperDetected") is True,
+        json.dumps(refused)[:200],
+    )
+    after_refusal = get("/api/health")
+    check(
+        "P3 FR-B6: nothing appended and nothing persisted",
+        after_refusal["chainHeight"] == height_before_refusal and get("/api/wallets") == wallets_before_refusal,
+        f"height {height_before_refusal} -> {after_refusal['chainHeight']}",
+    )
+    check(
+        "P3 FR-B6: the refusal is recorded as a DURABLE tamper event",
+        after_refusal.get("tamperEventCount", 0) == events_before_refusal + 1,
+        f"{events_before_refusal} -> {after_refusal.get('tamperEventCount')}",
+    )
+
+    # ---- P2 (B2-1): a hostile `sigs` value must not brick the server at boot ---------
+    # `sigs` is typed dict[str, str]; an int (123) is a schema violation. Before B2-1 this
+    # raised out of load_state() at IMPORT time, so the process never bound at all — a total
+    # outage, worse than a 500. The server must instead come up, answer /api/health with 200
+    # and chainValid false, and leave the hostile file untouched (a silent re-seed would
+    # report a clean chain — a false green — and destroy the evidence).
     kill_server()
+    hostile = json.loads(json.dumps(good_state))
+    hostile["blocks"][1]["sigs"]["node:admin"] = 123
+    STATE_PATH.write_text(json.dumps(hostile), "utf-8")
+    try:
+        start_server()
+        bound = True
+    except Exception as exc:  # start_server raises when the server never answers
+        bound = False
+        check("P2 hostile sigs: the server still BINDS", False, f"server never came up: {exc}")
+    if bound:
+        check("P2 hostile sigs: the server still BINDS", True)
+        try:
+            hostile_health = get("/api/health")
+            reachable = True
+        except Exception as exc:
+            hostile_health, reachable = {}, False
+            check("P2 hostile sigs: /api/health answers 200", False, f"{exc}")
+        if reachable:
+            check(
+                "P2 hostile sigs: /api/health is 200 with chainValid false + tamperDetected true",
+                hostile_health.get("chainValid") is False and hostile_health.get("tamperDetected") is True,
+                json.dumps(hostile_health),
+            )
+        on_disk = json.loads(STATE_PATH.read_text("utf-8"))
+        check(
+            "P2 hostile sigs: the corrupt file is left untouched (not re-seeded)",
+            on_disk["blocks"][1]["sigs"]["node:admin"] == 123,
+            json.dumps(on_disk["blocks"][1]["sigs"])[:160],
+        )
+
+    # Restore a pristine chain for the persistence section below.
+    kill_server()
+    reset_state_file()
     start_server()
 else:
     reset_state_file()

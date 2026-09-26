@@ -1,11 +1,11 @@
 """BUSTARON M3 backend — FastAPI server behind the frontend's DataBackend seam.
 
 Serves the PRD §4.4 `server` role on port 8000:
-  GET  /api/health              liveness + chain stats
+  GET  /api/health              liveness + chain stats + tamper state (PRD S4)
   GET  /api/zones               RFZ pack (same ingested CAD data the frontend uses)
   GET  /api/fleet               drone roster
   GET  /api/missions            mission list
-  GET  /chain                   full PoA-style chain (append-only, hash-chained)
+  GET  /chain                   full PoA chain (3-of-3 signed, append-only, hash-chained)
   GET  /block/{height}          single block by height
   POST /chain/tx               submit a transaction (auction bid, approval decision, …)
   GET  /api/auctions            open + decided auctions (server-persisted)
@@ -16,21 +16,34 @@ Persistence: JSON state file (data_dir/state.json) written atomically after
 every mutation — survives restarts, no external database required this
 increment. The ledger is append-only and hash-chained (PRD FR-B4): each block
 stores prev_hash; any tampering breaks the chain on the next verification.
+Consensus is 3-of-3 Proof of Authority (PRD §9, FR-B5): every block is
+co-signed by all three authorities in server/authorities.py, and a block is only
+anchored — and only accepted on read — when that quorum verifies.
+
+Tamper handling (PRD S4, PARTIAL): any chain fault is logged with the literal token
+`TAMPER_DETECTED` naming the offending block height, and surfaced via /api/health
+(`tamperDetected` / `chainFault` / `tamperEventCount`). A corrupt state file is REPORTED,
+never re-seeded; `POST /chain/tx` refuses to extend an invalid chain (FR-B6) with 409 and
+records a durable entry in `State.tamper_events`. The `GET /events` stream is S6's job.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import threading
 import time
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, ValidationError
+
+from server.authorities import sign_block_hash, verify_quorum
 
 app = FastAPI(title="BUSTARON M3 server", version="0.1.0")
 
@@ -43,9 +56,45 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
+
+class ChainIntegrityError(HTTPException):
+    """HTTP 409 raised when a write is refused because the chain is not trustworthy.
+
+    A *detected* integrity condition is a conflict with the server's current — corrupt —
+    state, NOT a server bug, so it is 409 rather than 5xx (see `submit_tx`, FR-B6).
+    Carries the fault text so the handler can echo it in a machine-readable body.
+    """
+
+    def __init__(self, fault: str) -> None:
+        super().__init__(status_code=409, detail=f"Refusing to append to an invalid chain: {fault}")
+        self.fault = fault
+
+
+@app.exception_handler(ChainIntegrityError)
+async def _chain_integrity_handler(_request: Request, exc: ChainIntegrityError) -> JSONResponse:
+    """Serialises `ChainIntegrityError` with a top-level, machine-readable `tamperDetected`.
+
+    FastAPI's default handler only emits `{"detail": ...}`; tamper clients need a boolean
+    they can branch on without string-matching the detail, so we flatten it here. This
+    handler is registered for the SUBCLASS only, so every other HTTPException keeps its
+    default shape.
+    """
+    return JSONResponse(
+        status_code=409,
+        content={"detail": exc.detail, "tamperDetected": True, "chainFault": exc.fault},
+    )
+
 DATA_DIR = Path(os.environ.get("BUSTARON_DATA_DIR", Path(__file__).resolve().parent / "data"))
 STATE_PATH = DATA_DIR / "state.json"
 STATE_LOCK = threading.Lock()
+
+logger = logging.getLogger("bustaron.server")
+
+#: State schema version, written into state.json so a future format change is
+#: detectable instead of being mis-parsed.
+#:   1 — pre-signature blocks (no `sigs`): the shape M3 phase 1 shipped.
+#:   2 — every block carries a 3-of-3 authority `sigs` quorum (PRD §9.2, FR-B5).
+CURRENT_SCHEMA_VERSION = 2
 
 # Types accepted by POST /chain/tx. Every entry here MUST have a dispatch branch
 # in submit_tx(); advertising a type the handler rejects produces a confusing
@@ -70,6 +119,17 @@ UNIMPLEMENTED_TX_TYPES = ("GENESIS",)
 
 
 def _hash(payload: dict[str, Any]) -> str:
+    """SHA-256 over the canonical JSON of a block's signed fields.
+
+    The payload is exactly ``{height, prev_hash, ts_ms, txs}``. ``sigs`` and
+    ``proposer`` are DELIBERATELY excluded: the authority signatures in ``sigs``
+    are computed OVER this hash, so folding ``sigs`` back in would create a
+    hash/signature cycle (the hash would depend on the signatures that in turn
+    depend on the hash). ``proposer`` is metadata about who assembled the block,
+    not part of the payload the authorities agree on. Do not add either field
+    here — `sign_block_hash()` and `verify_quorum()` in server/authorities.py
+    rely on this exact exclusion.
+    """
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -85,9 +145,18 @@ class Block(BaseModel):
     txs: list[dict[str, Any]]
     proposer: str = "node:admin"
     hash: str
+    # 3-of-3 Proof-of-Authority quorum over `hash`, keyed by authority id
+    # (PRD §9.2 shape). Populated by append_block() AFTER `hash` is final; `hash`
+    # itself excludes `sigs` so there is no hash/signature cycle (see _hash).
+    sigs: dict[str, str] = {}
 
 
 class State(BaseModel):
+    schema_version: int = CURRENT_SCHEMA_VERSION
+    # Non-None only on an in-memory placeholder for a state file that could not be
+    # read/validated. `exclude=True` keeps it out of every serialisation, so it can
+    # never be persisted back to disk.
+    load_error: str | None = Field(default=None, exclude=True)
     blocks: list[Block] = []
     wallets: dict[str, dict[str, Any]] = {}
     auctions: dict[str, dict[str, Any]] = {}
@@ -95,12 +164,85 @@ class State(BaseModel):
     credit_ledger: list[dict[str, Any]] = []
     drones: list[dict[str, Any]] = []
     missions: list[dict[str, Any]] = []
+    #: Durable audit trail of REFUSED writes (PRD S4 / FR-B6). A detected tamper cannot
+    #: be recorded as a block — that would append to the very chain we just declared
+    #: untrustworthy — so refusals land here instead, and (unlike `load_error`) this
+    #: field IS persisted, so the trail survives a restart.
+    tamper_events: list[dict[str, Any]] = []
+
+
+def _invalid_state(reason: str) -> State:
+    """A bootable placeholder for a state file that is unreadable or corrupt.
+
+    A malformed `state.json` must NOT brick the service: `seed_if_empty(load_state())`
+    runs at import, so letting `json`/Pydantic raise there would stop the server from
+    ever binding. Instead we return an EMPTY state flagged with `load_error`, so the
+    process comes up and reports `chainValid: false` (PRD S4) rather than dying. The
+    file itself is left untouched — re-seeding a corrupt v2 file would self-heal it and
+    erase the evidence of tampering (only a genuine v1 legacy file is re-seeded).
+    """
+    logger.error(
+        "TAMPER_DETECTED — state.json is unreadable or corrupt (%s); block height unknown. "
+        "Reporting the chain invalid and leaving the file untouched (not re-seeded).",
+        reason,
+    )
+    return State(load_error=reason)
 
 
 def load_state() -> State:
-    if STATE_PATH.exists():
-        return State.model_validate(json.loads(STATE_PATH.read_text("utf-8")))
-    return State()
+    """Loads state.json, surviving a corrupt file and migrating a pre-signature one.
+
+    Three outcomes:
+
+    * **missing / blank file** -> a fresh `State()` (which `seed_if_empty` then seeds);
+    * **genuine v1 legacy** (`schema_version < 2`) -> re-seeded, with a WARNING. A v1
+      file has blocks with no `sigs`, which can never satisfy the 3-of-3 quorum, so
+      `verify_chain()` would report it invalid forever. We re-seed rather than re-sign
+      those blocks — minting signatures for blocks no authority ever approved would
+      FABRICATE provenance. Re-seeding is lossless: `state.json` is untracked dev data
+      that `seed_if_empty()` rebuilds deterministically;
+    * **unreadable or corrupt v2** -> `_invalid_state()`, i.e. bootable + reported
+      invalid + the file left alone. Never re-seeded (self-healing hides tampering).
+    """
+    if not STATE_PATH.exists():
+        return State()
+    try:
+        raw = json.loads(STATE_PATH.read_text("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return _invalid_state(f"not readable as JSON: {exc}")
+    if not isinstance(raw, dict):
+        return _invalid_state(f"expected a JSON object, found {type(raw).__name__}")
+
+    # A file predating this field is by definition pre-signature (version 1).
+    stored_version = raw.get("schema_version", 1)
+    if not isinstance(stored_version, int):
+        return _invalid_state(f"schema_version must be an integer, found {stored_version!r}")
+    if stored_version < CURRENT_SCHEMA_VERSION:
+        # Only warn when there is actually legacy CONTENT to abandon. A blank or
+        # freshly-created file (e.g. the probe's deliberate `{}` re-seed signal) has
+        # nothing to migrate, so re-seeding it silently is correct and avoids a
+        # misleading warning on every clean boot. Any OTHER non-empty field in a
+        # pre-signature document — blocks, wallets, auctions, approvals, … — is thrown
+        # away by the re-seed, so it must be NAMED in the warning rather than dropped
+        # silently (a legacy file with wallets but no blocks is still data loss).
+        discarded = sorted(key for key, value in raw.items() if key != "schema_version" and value)
+        if discarded:
+            logger.warning(
+                "state.json schema_version=%s predates signature support (current=%s): "
+                "re-seeding a fresh, fully-signed chain. Discarded legacy content: %s. "
+                "Legacy blocks are NOT re-signed.",
+                stored_version,
+                CURRENT_SCHEMA_VERSION,
+                ", ".join(discarded),
+            )
+        return State()
+
+    try:
+        return State.model_validate(raw)
+    except ValidationError as exc:
+        # A v2 document that does not match the schema is corrupt or tampered with. Boot
+        # anyway and report it — do NOT re-seed (that would hide the tampering).
+        return _invalid_state(f"failed schema validation with {exc.error_count()} error(s)")
 
 
 def save_state(state: State) -> None:
@@ -121,20 +263,85 @@ def append_block(state: State, txs: list[dict[str, Any]], proposer: str = "node:
         hash="",
     )
     block.hash = _hash({"height": block.height, "prev_hash": block.prev_hash, "ts_ms": block.ts_ms, "txs": block.txs})
+    # Collect the 3-of-3 Proof-of-Authority quorum over the finalised hash
+    # (PRD §9, FR-B5). Signing happens AFTER `hash` is set, which is exactly why
+    # `_hash` must exclude `sigs`: the signatures commit to the hash, not vice
+    # versa. Genesis is minted through this same path, so it is signed too.
+    block.sigs = sign_block_hash(block.hash)
     state.blocks.append(block)
     return block
 
 
-def verify_chain(state: State) -> bool:
+def _report(fault: str) -> str:
+    """Logs a detected chain fault with the PRD S4 token and returns it to the caller."""
+    logger.error("TAMPER_DETECTED — %s", fault)
+    return fault
+
+
+def _chain_fault(state: State) -> str | None:
+    """Description of the FIRST fault in the chain, or None when the chain is valid.
+
+    Three independent checks per block (PRD FR-B4 + FR-B5), in order: linkage, integrity
+    (the stored `hash` recomputes) and consensus (`verify_quorum` over that hash).
+
+    This is the single detection-and-report point for PRD S4: every fault is logged with
+    the literal token `TAMPER_DETECTED` and the offending block height, so no caller can
+    observe an invalid chain silently. A `load_error` placeholder (unreadable/corrupt
+    file) is reported too — it was already logged by `_invalid_state()` when read.
+    """
+    if state.load_error is not None:
+        return f"state file is unreadable or corrupt: {state.load_error}"
     prev = "0" * 64
     for block in state.blocks:
         recomputed = _hash(
             {"height": block.height, "prev_hash": block.prev_hash, "ts_ms": block.ts_ms, "txs": block.txs}
         )
-        if block.prev_hash != prev or block.hash != recomputed:
-            return False
+        if block.prev_hash != prev:
+            return _report(f"block {block.height} does not link to its predecessor")
+        if block.hash != recomputed:
+            return _report(f"block {block.height} hash does not match its contents")
+        if not verify_quorum(block.hash, block.sigs):
+            return _report(f"block {block.height} lacks a valid 3-of-3 authority quorum")
         prev = block.hash
-    return True
+    return None
+
+
+def verify_chain(state: State) -> bool:
+    """True iff every block is correctly linked, hash-intact AND 3-of-3 signed.
+
+    Any failure anywhere invalidates the whole chain; the specific fault (and the block
+    height that caused it) is logged as `TAMPER_DETECTED` by `_chain_fault`.
+    """
+    return _chain_fault(state) is None
+
+
+#: Hard cap on the durable tamper-event audit log. A corrupt chain refuses EVERY write
+#: and each refusal appends one event, so without a bound the list grows without limit.
+MAX_TAMPER_EVENTS = 100
+
+
+def _record_tamper_event(state: State, fault: str, source: str) -> None:
+    """Appends a DURABLE `TAMPER_DETECTED` audit entry to `state.tamper_events`.
+
+    Called when a write is refused (FR-B6). The event cannot be a block — appending a
+    block to the chain we just declared corrupt would be self-contradictory — so it is
+    recorded beside the chain and persisted with the rest of the state.
+
+    When the state file itself could not be parsed (`load_error` set) we log only and do
+    NOT write: re-serialising the placeholder would overwrite the corrupt file and destroy
+    the very evidence of tampering we are reporting.
+    """
+    state.tamper_events.append({"atMs": _now_ms(), "source": source, "fault": fault})
+    del state.tamper_events[:-MAX_TAMPER_EVENTS]  # keep only the most recent 100 (spam-growth guard)
+    if state.load_error is None:
+        save_state(state)
+    else:
+        logger.error(
+            "TAMPER_DETECTED — %s (source=%s); tamper event NOT persisted: the state file is "
+            "unreadable, so writing would erase the evidence.",
+            fault,
+            source,
+        )
 
 
 def wallet_of(state: State, wallet_id: str) -> dict[str, Any]:
@@ -236,7 +443,10 @@ SEED_APPROVALS = {
 
 
 def seed_if_empty(state: State) -> None:
-    if not state.blocks and not state.wallets:
+    # Never seed over a file we could not read: that would overwrite the evidence of
+    # tampering (self-healing hides an attack). A genuinely blank or missing file has
+    # `load_error is None`, so it still seeds.
+    if state.load_error is None and not state.blocks and not state.wallets:
         state.wallets = SEED_WALLETS
         state.auctions = SEED_AUCTIONS
         state.approvals = SEED_APPROVALS
@@ -288,11 +498,21 @@ class FileApprovalPayload(BaseModel):
 # --------------------------------------------------------------------- routes
 @app.get("/api/health")
 def health() -> dict[str, Any]:
+    """Liveness + chain stats. `status` is LIVENESS ONLY — a tampered chain still serves,
+    so pollers must read `chainValid` / `tamperDetected`, not `status`. PRD S4 (partial):
+    the chain's tamper state is exposed here; the `GET /events` stream is S6's job.
+    """
     state = load_state()
+    fault = _chain_fault(state)  # logs TAMPER_DETECTED on the first fault
     return {
         "status": "ok",
         "chainHeight": len(state.blocks),
-        "chainValid": verify_chain(state),
+        "chainValid": fault is None,
+        "tamperDetected": fault is not None,
+        "chainFault": fault,
+        # Durable count of REFUSED writes (FR-B6) — a non-zero count with a now-valid
+        # chain still means someone tried to extend a corrupt chain at some point.
+        "tamperEventCount": len(state.tamper_events),
         "auctions": len(state.auctions),
         "approvals": len(state.approvals),
         "wallets": len(state.wallets),
@@ -343,6 +563,18 @@ def submit_tx(tx: Tx) -> dict[str, Any]:
     with STATE_LOCK:
         state = load_state()
         seed_if_empty(state)
+        # FR-B6: recompute the WHOLE chain before appending and refuse if it is invalid.
+        # An invalid chain must never be extended. We raise BEFORE the dispatch below, so
+        # no `apply_*` mutation runs, nothing is appended (height unchanged) and nothing is
+        # persisted. 409 (not 500): the request is well-formed, it conflicts with the
+        # server's current — untrustworthy — state.
+        fault = _chain_fault(state)
+        if fault is not None:
+            # FR-B6: record a durable audit entry, then refuse. `_record_tamper_event`
+            # persists only the event (never the transaction): no `apply_*` mutation runs,
+            # no block is appended (height unchanged) and no business state is written.
+            _record_tamper_event(state, fault, tx.type)
+            raise ChainIntegrityError(fault)
         if tx.type == "AUCTION_BID":
             result = apply_bid(state, BidPayload(**tx.payload))
         elif tx.type == "AUCTION_AWARD":
@@ -361,6 +593,18 @@ def submit_tx(tx: Tx) -> dict[str, Any]:
             "result": {key: result[key] for key in result if key != "state"},
         }
         block = append_block(state, [anchor])
+        # Server-side invariant guard. append_block() signs with THIS process's own
+        # authority keys, so a fresh block must always carry a valid 3-of-3 quorum.
+        # A failure here is not a client error — it means the server's key material
+        # or signing path is broken (e.g. a rotated/mismatched authority key), hence
+        # 500 rather than 4xx. We POP the block first so an unverified block is never
+        # left anchored, and raise before save_state() so nothing is persisted either.
+        if not verify_quorum(block.hash, block.sigs):
+            state.blocks.pop()
+            raise HTTPException(
+                status_code=500,
+                detail="Server invariant violation: appended block failed the 3-of-3 authority quorum",
+            )
         save_state(state)
         return {
             "ok": True,
