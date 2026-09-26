@@ -55,7 +55,9 @@ def _douglas_peucker(line, eps):
             keep[best_k] = True
             stack.append((i, best_k))
             stack.append((best_k, j))
-    return [p for p, kept in zip(line, keep) if kept]
+    # `keep` is built as [False] * len(line), so the two are always the same
+    # length; strict=True documents that invariant and fails loudly if it breaks.
+    return [p for p, kept in zip(line, keep, strict=True) if kept]
 
 
 def _simplify_closed_ring(line, eps):
@@ -141,7 +143,7 @@ def _identity_signature(name, ring):
 
 
 def main():
-    with open(SRC, "r", encoding="utf-8") as f:
+    with open(SRC, encoding="utf-8") as f:
         data = json.load(f)
 
     features = []

@@ -49,19 +49,21 @@ export function AppShell(): JSX.Element {
   // PRD S110 (operator) / S117 (admin) live stats bars. The operator bar is
   // credits/ESG/alerts centric; the admin bar adds system-wide compliance and
   // ledger signals. Both keep the fleet metrics as trailing context.
+  // Labels are Title Case to match PRD S110/S117 verbatim, so the bars can be
+  // checked against the spec literally rather than "close enough".
   const totalCredits = wallets.reduce((total, wallet) => total + wallet.balanceCredits + wallet.reservedCredits, 0);
   const pendingApprovals = approvalRequests.filter((request) => request.status === 'pending').length;
   const operatorMetrics = [
-    { label: 'Active drones', value: `${activeDrones}/${drones.length}`, trend: 'Fleet in controlled airspace', tone: 'good' as const, icon: 'AIR' },
-    { label: 'Credits balance', value: `${totalCredits}`, trend: `${wallets.length} operator wallets`, tone: 'neutral' as const, icon: 'CRD' },
-    { label: 'ESG score', value: esgScore, trend: 'Fleet-weighted multiplier 1.15×', tone: 'good' as const, icon: 'ESG' },
-    { label: 'Pending alerts', value: `${weatherAlerts.length + warningDrones}`, trend: 'Weather + aircraft watch', tone: warningDrones > 0 ? 'warning' as const : 'good' as const, icon: 'ALR' },
+    { label: 'Active Drones', value: `${activeDrones}/${drones.length}`, trend: 'Fleet in controlled airspace', tone: 'good' as const, icon: 'AIR' },
+    { label: 'Credits Balance', value: `${totalCredits}`, trend: `${wallets.length} operator wallets`, tone: 'neutral' as const, icon: 'CRD' },
+    { label: 'ESG Score', value: esgScore, trend: 'Fleet-weighted multiplier 1.15×', tone: 'good' as const, icon: 'ESG' },
+    { label: 'Pending Alerts', value: `${weatherAlerts.length + warningDrones}`, trend: 'Weather + aircraft watch', tone: warningDrones > 0 ? 'warning' as const : 'good' as const, icon: 'ALR' },
   ];
   const adminMetrics = [
-    { label: 'Active drones', value: `${activeDrones}/${drones.length}`, trend: 'System-wide fleet', tone: 'good' as const, icon: 'AIR' },
-    { label: 'Blockchain TPS', value: '0.0', trend: 'Ledger lands with M3 backend', tone: 'neutral' as const, icon: 'BCH' },
-    { label: 'City risk score', value: cityRisk, trend: `${warningDrones} aircraft on watch`, tone: warningDrones > 0 ? 'warning' as const : 'good' as const, icon: 'RSK' },
-    { label: 'Pending approvals', value: `${pendingApprovals}`, trend: 'Escrowed requests in queue', tone: pendingApprovals > 0 ? 'warning' as const : 'good' as const, icon: 'APR' },
+    { label: 'Active Drones', value: `${activeDrones}/${drones.length}`, trend: 'System-wide fleet', tone: 'good' as const, icon: 'AIR' },
+    { label: 'Blockchain TPS', value: '0.0', trend: 'Chain live · TPS not yet wired', tone: 'neutral' as const, icon: 'BCH' },
+    { label: 'City Risk Score', value: cityRisk, trend: `${warningDrones} aircraft on watch`, tone: warningDrones > 0 ? 'warning' as const : 'good' as const, icon: 'RSK' },
+    { label: 'Pending Approvals', value: `${pendingApprovals}`, trend: 'Escrowed requests in queue', tone: pendingApprovals > 0 ? 'warning' as const : 'good' as const, icon: 'APR' },
   ];
   const visibleMetrics = activeRole === 'admin' ? adminMetrics : operatorMetrics;
 

@@ -81,9 +81,9 @@ describe('role-based KPI bars (PRD S110 / S117)', () => {
   it('shows the operator stats bar: Active Drones, Credits Balance, ESG Score, Pending Alerts', () => {
     render(<App />);
 
-    expect(screen.getByText('Credits balance')).toBeInTheDocument();
-    expect(screen.getByText('ESG score')).toBeInTheDocument();
-    expect(screen.getByText('Pending alerts')).toBeInTheDocument();
+    expect(screen.getByText('Credits Balance')).toBeInTheDocument();
+    expect(screen.getByText('ESG Score')).toBeInTheDocument();
+    expect(screen.getByText('Pending Alerts')).toBeInTheDocument();
     expect(screen.queryByText('Blockchain TPS')).toBeNull();
   });
 
@@ -92,9 +92,9 @@ describe('role-based KPI bars (PRD S110 / S117)', () => {
     fireEvent.click(screen.getByRole('button', { name: /admin/i }));
 
     expect(screen.getByText('Blockchain TPS')).toBeInTheDocument();
-    expect(screen.getByText('City risk score')).toBeInTheDocument();
-    expect(screen.getByText('Pending approvals')).toBeInTheDocument();
-    expect(screen.queryByText('ESG score')).toBeNull();
+    expect(screen.getByText('City Risk Score')).toBeInTheDocument();
+    expect(screen.getByText('Pending Approvals')).toBeInTheDocument();
+    expect(screen.queryByText('ESG Score')).toBeNull();
   });
 });
 

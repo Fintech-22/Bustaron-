@@ -5,7 +5,10 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'coverage', 'node_modules', 'tools/**'] },
+  // `.workbuddy-ai` is agent/audit scratch space (gitignored, but eslint still
+  // walks it). Without this ignore, any ad-hoc script an agent drops there breaks
+  // `eslint . --max-warnings=0` even though the product source is clean.
+  { ignores: ['dist', 'coverage', 'node_modules', 'tools/**', '.workbuddy-ai/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

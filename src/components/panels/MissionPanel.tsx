@@ -52,13 +52,11 @@ const missionStatusLabelByName: Record<MissionStatus, string> = {
 export function MissionPanel({ expanded = false }: MissionPanelProps): JSX.Element {
   const missions = useDashboardStore((state) => state.missions);
   const flightDraftOpen = useDashboardStore((state) => state.flightDraftOpen);
-  const altitudeBandM = useDashboardStore((state) => state.altitudeBandM);
   const plannedRoute = useDashboardStore((state) => state.plannedRoute);
   const routeZoneHits = useDashboardStore((state) => state.routeZoneHits);
   const lastError = useDashboardStore((state) => state.lastError);
   const startFlightDraft = useDashboardStore((state) => state.startFlightDraft);
   const clearFlightDraft = useDashboardStore((state) => state.clearFlightDraft);
-  const setAltitudeBand = useDashboardStore((state) => state.setAltitudeBand);
   const [originName, setOriginName] = useState(draftLocations[0].name);
   const [destinationName, setDestinationName] = useState(draftLocations[4].name);
   const origin = draftLocations.find((entry) => entry.name === originName) ?? draftLocations[0];
@@ -125,18 +123,10 @@ export function MissionPanel({ expanded = false }: MissionPanelProps): JSX.Eleme
         </div>
       )}
 
-      <div className="altitude-control spaced-bottom--lg">
-        <label className="label-text" htmlFor="altitude-upper">Shared altitude ceiling: {altitudeBandM[1]} m</label>
-        <input
-          id="altitude-upper"
-          type="range"
-          min="80"
-          max="220"
-          step="10"
-          value={altitudeBandM[1]}
-          onChange={(event) => setAltitudeBand([altitudeBandM[0], Number(event.target.value)])}
-        />
-      </div>
+      {/* The "shared altitude ceiling" range slider that used to live here was
+          removed: it wrote to `altitudeBandM`, which nothing read, so it filtered
+          nothing while looking like a working control. The real altitude filter is
+          the five PRD band buttons (AltitudeBandControls → `altitudeFilterM`). */}
 
       {missions.length === 0 ? (
         <EmptyState

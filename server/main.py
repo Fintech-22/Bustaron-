@@ -47,14 +47,21 @@ DATA_DIR = Path(os.environ.get("BUSTARON_DATA_DIR", Path(__file__).resolve().par
 STATE_PATH = DATA_DIR / "state.json"
 STATE_LOCK = threading.Lock()
 
+# Types accepted by POST /chain/tx. Every entry here MUST have a dispatch branch
+# in submit_tx(); advertising a type the handler rejects produces a confusing
+# "400 Unsupported tx type" for an input the API schema said was valid.
+# AUCTION_SETTLE and APPROVAL_FILE were declared here but never implemented, so a
+# client could pass validation and then be rejected at runtime. They are removed
+# until the settle/file endpoints are actually built (tracked as M3 follow-up).
 TXType = Literal[
     "AUCTION_BID",
     "AUCTION_AWARD",
-    "AUCTION_SETTLE",
-    "APPROVAL_FILE",
     "APPROVAL_DECIDE",
-    "GENESIS",
 ]
+
+# Types that exist in the domain but have no handler yet. Kept as a documented
+# allowlist so the omission is deliberate and greppable, not accidental.
+UNIMPLEMENTED_TX_TYPES = ("AUCTION_SETTLE", "APPROVAL_FILE", "GENESIS")
 
 
 def _hash(payload: dict[str, Any]) -> str:
@@ -116,7 +123,9 @@ def append_block(state: State, txs: list[dict[str, Any]], proposer: str = "node:
 def verify_chain(state: State) -> bool:
     prev = "0" * 64
     for block in state.blocks:
-        recomputed = _hash({"height": block.height, "prev_hash": block.prev_hash, "ts_ms": block.ts_ms, "txs": block.txs})
+        recomputed = _hash(
+            {"height": block.height, "prev_hash": block.prev_hash, "ts_ms": block.ts_ms, "txs": block.txs}
+        )
         if block.prev_hash != prev or block.hash != recomputed:
             return False
         prev = block.hash
@@ -131,10 +140,36 @@ def wallet_of(state: State, wallet_id: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------- seed state
+def _wallet(wallet_id: str, operator: str, balance: int, reserved: int) -> dict[str, Any]:
+    """Builds a seed wallet. Keeps the seed table readable within the line limit."""
+    return {"id": wallet_id, "operatorName": operator, "balanceCredits": balance, "reservedCredits": reserved}
+
+
+def _bid(bid_id: str, wallet_id: str, bidder: str, credits: int, submitted: str) -> dict[str, Any]:
+    """Builds a seed auction bid."""
+    return {"id": bid_id, "walletId": wallet_id, "bidder": bidder, "credits": credits, "submittedIso": submitted}
+
+
+def _now_iso() -> str:
+    """UTC timestamp in the ISO shape the ledger and bids use."""
+    return time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+
+
+def _ledger(entry_id: str, wallet_id: str, delta: int, reason: str) -> dict[str, Any]:
+    """Builds a credit-ledger row. Every ledger entry has this exact shape."""
+    return {
+        "id": entry_id,
+        "walletId": wallet_id,
+        "deltaCredits": delta,
+        "reason": reason,
+        "atIso": _now_iso(),
+    }
+
+
 SEED_WALLETS = {
-    "wallet-harbour": {"id": "wallet-harbour", "operatorName": "Harbour Ops Desk", "balanceCredits": 480, "reservedCredits": 40},
-    "wallet-urban": {"id": "wallet-urban", "operatorName": "Urban Scan Team", "balanceCredits": 260, "reservedCredits": 80},
-    "wallet-cargo": {"id": "wallet-cargo", "operatorName": "Cargo Pilot Cell", "balanceCredits": 640, "reservedCredits": 160},
+    "wallet-harbour": _wallet("wallet-harbour", "Harbour Ops Desk", 480, 40),
+    "wallet-urban": _wallet("wallet-urban", "Urban Scan Team", 260, 80),
+    "wallet-cargo": _wallet("wallet-cargo", "Cargo Pilot Cell", 640, 160),
 }
 
 SEED_AUCTIONS = {
@@ -147,8 +182,8 @@ SEED_AUCTIONS = {
         "reserveCredits": 30,
         "status": "open",
         "bids": [
-            {"id": "bid-harbour-1", "walletId": "wallet-harbour", "bidder": "Harbour Ops Desk", "credits": 40, "submittedIso": "2026-09-24T12:40:00.000Z"},
-            {"id": "bid-cargo-1", "walletId": "wallet-cargo", "bidder": "Cargo Pilot Cell", "credits": 120, "submittedIso": "2026-09-24T12:46:00.000Z"},
+            _bid("bid-harbour-1", "wallet-harbour", "Harbour Ops Desk", 40, "2026-09-24T12:40:00.000Z"),
+            _bid("bid-cargo-1", "wallet-cargo", "Cargo Pilot Cell", 120, "2026-09-24T12:46:00.000Z"),
         ],
         "winningBidId": None,
     },
@@ -161,7 +196,7 @@ SEED_AUCTIONS = {
         "reserveCredits": 50,
         "status": "open",
         "bids": [
-            {"id": "bid-urban-1", "walletId": "wallet-urban", "bidder": "Urban Scan Team", "credits": 65, "submittedIso": "2026-09-24T12:51:00.000Z"},
+            _bid("bid-urban-1", "wallet-urban", "Urban Scan Team", 65, "2026-09-24T12:51:00.000Z"),
         ],
         "winningBidId": None,
     },
@@ -246,7 +281,11 @@ def health() -> dict[str, Any]:
 @app.get("/chain")
 def chain() -> dict[str, Any]:
     state = load_state()
-    return {"height": len(state.blocks), "valid": verify_chain(state), "blocks": [block.model_dump() for block in state.blocks]}
+    return {
+        "height": len(state.blocks),
+        "valid": verify_chain(state),
+        "blocks": [block.model_dump() for block in state.blocks],
+    }
 
 
 @app.get("/block/{height}")
@@ -298,7 +337,12 @@ def submit_tx(tx: Tx) -> dict[str, Any]:
         }
         block = append_block(state, [anchor])
         save_state(state)
-        return {"ok": True, "blockHeight": block.height, "blockHash": block.hash, **{k: v for k, v in result.items() if k != "state"}}
+        return {
+            "ok": True,
+            "blockHeight": block.height,
+            "blockHash": block.hash,
+            **{k: v for k, v in result.items() if k != "state"},
+        }
 
 
 def apply_bid(state: State, payload: BidPayload) -> dict[str, Any]:
@@ -309,9 +353,15 @@ def apply_bid(state: State, payload: BidPayload) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail=f"Auction {payload.auctionId} is not open")
     wallet = wallet_of(state, payload.walletId)
     if payload.credits <= auction["reserveCredits"]:
-        raise HTTPException(status_code=422, detail=f"Bid must exceed the reserve of {auction['reserveCredits']} credits")
+        raise HTTPException(
+            status_code=422,
+            detail=f"Bid must exceed the reserve of {auction['reserveCredits']} credits",
+        )
     if wallet["balanceCredits"] < payload.credits:
-        raise HTTPException(status_code=422, detail=f"Insufficient credits: balance {wallet['balanceCredits']}, bid {payload.credits}")
+        raise HTTPException(
+            status_code=422,
+            detail=f"Insufficient credits: balance {wallet['balanceCredits']}, bid {payload.credits}",
+        )
 
     wallet["balanceCredits"] -= payload.credits
     wallet["reservedCredits"] += payload.credits

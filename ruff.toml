@@ -1,0 +1,35 @@
+# Ruff configuration — Python linting and formatting for BUSTARON.
+#
+# PRD S93 requires Python linting as well as JS linting; eslint covers the
+# TypeScript/React side, this covers server/ and the Python data scripts.
+#
+#   ruff check server scripts
+#   ruff format --check server scripts
+#
+# If ruff is not installed:  pip install --user ruff
+
+line-length = 120
+target-version = "py313"
+
+extend-exclude = [".workbuddy-ai", "node_modules", "dist", "screenshots"]
+
+[lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes — undefined names, unused imports
+  "I",   # import sorting
+  "UP",  # pyupgrade — modern syntax for the target version
+  "B",   # flake8-bugbear — likely bugs and design problems
+  "C4",  # flake8-comprehensions
+  "SIM", # flake8-simplify
+]
+
+[lint.per-file-ignores]
+# The behavioural probe deliberately keeps each assertion on one long line so the
+# PASS/FAIL output lines up with the assertion it belongs to.
+"server/probe_api.py" = ["E501"]
+
+[format]
+quote-style = "double"
+indent-style = "space"

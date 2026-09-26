@@ -1,19 +1,23 @@
 """Behavioral probe for the M3 FastAPI backend — drives the real HTTP API and
 asserts state transitions, chain integrity, tamper detection and persistence.
 
-Run: python server/probe_api.py  (server must be running on 127.0.0.1:8000)
+Run: python server/probe_api.py
+
+The probe is self-contained and idempotent: it kills any listener on :8000,
+re-seeds state.json from scratch, starts the server itself, and asserts absolute
+seed balances. Run it as many times as you like — the result is the same.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 BASE = "http://127.0.0.1:8000"
 STATE_PATH = Path(__file__).resolve().parent / "data" / "state.json"
@@ -76,6 +80,16 @@ def start_server() -> None:
             time.sleep(1)
     raise RuntimeError("server did not come back")
 
+
+# ------------------------------------------------------------- pristine seed
+# This probe asserts ABSOLUTE seed balances (harbour 480/40, urban 260/80), so it
+# must start from a clean slate. state.json deliberately persists across restarts,
+# which made a second consecutive run fail its first checks. Re-seeding here makes
+# the probe idempotent: it produces the same result however many times it runs.
+kill_server()
+if STATE_PATH.exists():
+    STATE_PATH.unlink()
+start_server()
 
 # ---------------------------------------------------------------- lifecycle
 health = get("/api/health")
