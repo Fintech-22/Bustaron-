@@ -1,0 +1,225 @@
+{
+  "url": "http://127.0.0.1:4177",
+  "consoleErrorCount": 1,
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "results": [
+    {
+      "label": "mobile-320",
+      "viewport": {
+        "w": 320,
+        "h": 720
+      },
+      "overflow": {
+        "docScrollWidth": 320,
+        "bodyScrollWidth": 320,
+        "horizontalOverflow": false
+      },
+      "layout": {
+        "appShellColumns": 1,
+        "appShellTracks": "320px",
+        "dashboardColumns": 1,
+        "dashboardTracks": "296px",
+        "metricColumns": 1,
+        "navColumns": 1,
+        "navButtonMarginBottom": "0px",
+        "sidebarWidth": 320,
+        "sidebarBorderRight": "0px",
+        "sidebarBorderBottom": "1px",
+        "topBarFlexDirection": "column",
+        "topBarPosition": "static",
+        "mapCanvasMinHeight": "432px",
+        "statusRowFlexDirection": "column",
+        "adminGridColumns": 0
+      },
+      "tokens": {
+        "space1": ".25rem",
+        "space4": "1rem",
+        "space8": "2rem",
+        "fontSizeH1": "clamp(1.35rem, 2.4vw, 2.1rem)",
+        "fontSizeH2": "1.15rem",
+        "fontSizeH3": "1rem",
+        "focusRingWidth": "3px",
+        "h1Computed": "21.6px",
+        "h2Computed": "18.4px",
+        "h3Computed": null,
+        "bodyComputed": "16px"
+      },
+      "mapA11y": {
+        "canvasRole": null,
+        "canvasIsImg": false,
+        "canvasAccessibleName": null,
+        "svgRole": null,
+        "droneMarkerCount": 0,
+        "droneMarkersTabIndex": [],
+        "droneMarkerNames": []
+      }
+    },
+    {
+      "label": "tablet-768",
+      "viewport": {
+        "w": 768,
+        "h": 1024
+      },
+      "overflow": {
+        "docScrollWidth": 768,
+        "bodyScrollWidth": 768,
+        "horizontalOverflow": false
+      },
+      "layout": {
+        "appShellColumns": 1,
+        "appShellTracks": "768px",
+        "dashboardColumns": 1,
+        "dashboardTracks": "736px",
+        "metricColumns": 2,
+        "navColumns": 3,
+        "navButtonMarginBottom": "0px",
+        "sidebarWidth": 768,
+        "sidebarBorderRight": "0px",
+        "sidebarBorderBottom": "1px",
+        "topBarFlexDirection": "column",
+        "topBarPosition": "static",
+        "mapCanvasMinHeight": "480px",
+        "statusRowFlexDirection": "row",
+        "adminGridColumns": 0
+      },
+      "tokens": {
+        "space1": ".25rem",
+        "space4": "1rem",
+        "space8": "2rem",
+        "fontSizeH1": "clamp(1.35rem, 2.4vw, 2.1rem)",
+        "fontSizeH2": "1.15rem",
+        "fontSizeH3": "1rem",
+        "focusRingWidth": "3px",
+        "h1Computed": "21.6px",
+        "h2Computed": "18.4px",
+        "h3Computed": null,
+        "bodyComputed": "16px"
+      },
+      "mapA11y": {
+        "canvasRole": null,
+        "canvasIsImg": false,
+        "canvasAccessibleName": null,
+        "svgRole": null,
+        "droneMarkerCount": 0,
+        "droneMarkersTabIndex": [],
+        "droneMarkerNames": []
+      }
+    },
+    {
+      "label": "laptop-1024",
+      "viewport": {
+        "w": 1024,
+        "h": 800
+      },
+      "overflow": {
+        "docScrollWidth": 1024,
+        "bodyScrollWidth": 1024,
+        "horizontalOverflow": false
+      },
+      "layout": {
+        "appShellColumns": 2,
+        "appShellTracks": "240px 784px",
+        "dashboardColumns": 2,
+        "dashboardTracks": "416px 320px",
+        "metricColumns": 4,
+        "navColumns": 1,
+        "navButtonMarginBottom": "8px",
+        "sidebarWidth": 240,
+        "sidebarBorderRight": "1px",
+        "sidebarBorderBottom": "0px",
+        "topBarFlexDirection": "row",
+        "topBarPosition": "sticky",
+        "mapCanvasMinHeight": "544px",
+        "statusRowFlexDirection": "row",
+        "adminGridColumns": 0
+      },
+      "tokens": {
+        "space1": ".25rem",
+        "space4": "1rem",
+        "space8": "2rem",
+        "fontSizeH1": "clamp(1.35rem, 2.4vw, 2.1rem)",
+        "fontSizeH2": "1.15rem",
+        "fontSizeH3": "1rem",
+        "focusRingWidth": "3px",
+        "h1Computed": "24.576px",
+        "h2Computed": "18.4px",
+        "h3Computed": null,
+        "bodyComputed": "16px"
+      },
+      "mapA11y": {
+        "canvasRole": null,
+        "canvasIsImg": false,
+        "canvasAccessibleName": null,
+        "svgRole": null,
+        "droneMarkerCount": 0,
+        "droneMarkersTabIndex": [],
+        "droneMarkerNames": []
+      }
+    },
+    {
+      "label": "desktop-1440",
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "overflow": {
+        "docScrollWidth": 1440,
+        "bodyScrollWidth": 1440,
+        "horizontalOverflow": false
+      },
+      "layout": {
+        "appShellColumns": 2,
+        "appShellTracks": "272px 1168px",
+        "dashboardColumns": 2,
+        "dashboardTracks": "752px 368px",
+        "metricColumns": 4,
+        "navColumns": 1,
+        "navButtonMarginBottom": "8px",
+        "sidebarWidth": 272,
+        "sidebarBorderRight": "1px",
+        "sidebarBorderBottom": "0px",
+        "topBarFlexDirection": "row",
+        "topBarPosition": "sticky",
+        "mapCanvasMinHeight": "544px",
+        "statusRowFlexDirection": "row",
+        "adminGridColumns": 0
+      },
+      "tokens": {
+        "space1": ".25rem",
+        "space4": "1rem",
+        "space8": "2rem",
+        "fontSizeH1": "clamp(1.35rem, 2.4vw, 2.1rem)",
+        "fontSizeH2": "1.15rem",
+        "fontSizeH3": "1rem",
+        "focusRingWidth": "3px",
+        "h1Computed": "33.6px",
+        "h2Computed": "18.4px",
+        "h3Computed": null,
+        "bodyComputed": "16px"
+      },
+      "mapA11y": {
+        "canvasRole": null,
+        "canvasIsImg": false,
+        "canvasAccessibleName": null,
+        "svgRole": null,
+        "droneMarkerCount": 0,
+        "droneMarkersTabIndex": [],
+        "droneMarkerNames": []
+      }
+    },
+    {
+      "label": "focus-after-tab",
+      "focus": {
+        "tag": "BUTTON",
+        "className": "nav-button",
+        "accessibleName": "OPSOperations mapLive tactical overview",
+        "outlineStyle": "solid",
+        "outlineWidth": "3px",
+        "outlineColor": "rgba(74, 222, 128, 0.86)",
+        "outlineOffset": "3px"
+      }
+    }
+  ]
+}
