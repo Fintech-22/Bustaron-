@@ -12,50 +12,12 @@ related: []
 ## Start here for a new session
 
 1. Read the newest **Session** note — it is the handoff left by the previous agent.
-   - Newest: [[orchestration-run-multi-agent-b2-poa-hardening]] (2026-09-27)
+   - (none yet — create one: `bun tools/obsidian.mjs new Session "<title>"`)
 2. Skim this Index, then open the **Decision** and **Spec** notes relevant to your task.
 3. Find a specific fact with full-text search: `bun tools/obsidian.mjs search "<term>"`.
 4. Before you finish, capture your work: `bun tools/obsidian.mjs new Session "<title>"`.
 
 ## Notes by type
-
-### Session (5)
-
-- [[orchestration-run-multi-agent-b2-poa-hardening]] — Orchestration run - multi-agent B2 PoA hardening · status: done · 2026-09-27
-- [[m3-session-obsidian-memory-pipeline-items-1-5]] — M3 session - Obsidian memory pipeline items 1-5 · status: done · 2026-09-26
-- [[t11-defects-closed-and-m3-phase-1-fastapi-ledger]] — T11 defects closed and M3 phase 1 fastapi ledger · status: done · 2026-09-26
-- [[t8-resume-session-drift-audit-mobile-disclosure-provider-default]] — T8 resume session - drift audit, mobile disclosure, provider default · status: done · 2026-09-26
-- [[t9-mapbox-tactical-overlay-and-prd-defects-1-4-5]] — T9 mapbox tactical overlay and prd defects 1-4-5 · status: done · 2026-09-26
-
-### Spec (2)
-
-- [[project-north-star]] — BUSTARON v3 — Project North Star · status: active · 2026-09-27
-- [[m3-scope-backend-ledger-agents]] — M3 scope - backend, ledger, agents · status: draft · 2026-09-26
-
-### Decision (5)
-
-- [[s4-tamper-event-stays-partial-until-get-events-ships]] — S4 tamper event stays PARTIAL until GET /events ships · status: active · 2026-09-27
-- [[cad-rings-simplified-with-douglas-peucker-after-farthest-point-corruption]] — CAD rings simplified with Douglas-Peucker after farthest-point corruption · status: accepted · 2026-09-26
-- [[mapbox-sdk-loaded-via-cdn-because-npm-install-is-banned]] — Mapbox SDK loaded via CDN because npm install is banned · status: accepted · 2026-09-26
-- [[prd-defects-1-6-deferred-out-of-scope-this-session]] — PRD defects 1-6 deferred out of scope this session · status: accepted · 2026-09-26
-- [[vault-lives-at-docs-vault-and-is-configurable]] — Vault lives at docs/vault and is configurable · status: accepted · 2026-09-26
-
-### Bug (1)
-
-- [[cad-ring-order-corruption-broke-rfz-containment]] — CAD ring-order corruption broke RFZ containment · status: fixed · 2026-09-26
-
-### Progress (6)
-
-- [[b2-round-2-poa-hardening-accepted-on-bc34797]] — B2 round 2 PoA hardening accepted on bc34797 · status: done · 2026-09-27
-- [[m3-b2-3-of-3-proof-of-authority-consensus]] — M3 phase 2 — 3-of-3 Proof-of-Authority consensus (B2) · status: done · 2026-09-27
-- [[m3-phase-2-3-of-3-proof-of-authority]] — M3 phase 2 — 3-of-3 Proof-of-Authority consensus (B2) · status: done · 2026-09-27
-- [[settle-and-file-endpoints]] — M3 phase 2 — settle + file-approval endpoints · status: done · 2026-09-27
-- [[step-0-stabilization-audit-close-out]] — STEP 0 — Stabilization (orchestration run entry #0) · status: done · 2026-09-27
-- [[m3-documentation-session-progress]] — M3 documentation session progress · status: done · 2026-09-26
-
-### Readme (1)
-
-- [[README]] — BUSTARON Vault · status: stable
 
 ## Folder convention
 
@@ -65,4 +27,4 @@ related: []
 - `bugs/` — Bug notes
 - `sessions/` — Session notes
 
-_20 note(s) · vault: `docs/vault`_
+_0 note(s) · vault: `docs/vault`_
