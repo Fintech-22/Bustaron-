@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { EmptyState } from '../common/EmptyState';
 import { MetricCard } from '../common/MetricCard';
-import { TacticalMap } from '../map/TacticalMap';
+import { MapHost } from '../map/MapHost';
 import { AdminPanel } from '../panels/AdminPanel';
 import { ApprovalsQueuePanel } from '../panels/ApprovalsQueuePanel';
 import { CreditWalletPanel } from '../panels/CreditWalletPanel';
@@ -64,7 +64,7 @@ export function AppShell(): JSX.Element {
               <MetricCard label="Weather cells" value={`${weatherAlerts.length}`} trend="Layered aviation advisories" tone="warning" icon="WX" />
               <MetricCard label="Avg battery" value={`${averageBattery}%`} trend={`${warningDrones} aircraft need watch`} tone={warningDrones > 0 ? 'warning' : 'good'} icon="BAT" />
             </div>
-            {activeSection === 'operations' && <TacticalMap />}
+            {activeSection === 'operations' && <MapHost />}
             {activeSection === 'missions' && <MissionPanel expanded />}
             {activeSection === 'wallet' && <CreditWalletPanel />}
             {activeSection === 'approvals' && activeRole === 'admin' && <ApprovalsQueuePanel expanded />}

@@ -6,3 +6,5 @@ dist/
 .freebuff/
 .workbuddy-ai/
 *.local
+.env.local
+.env.*.local

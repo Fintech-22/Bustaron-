@@ -1,6 +1,21 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-import App from '../App';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+let App: () => JSX.Element;
+
+// The map provider is chosen from VITE_MAPBOX_TOKEN when the module graph loads.
+// These shell tests pin the offline SVG map so they keep asserting the schematic
+// overlay whether or not a developer has a token in .env.local; MapHost.test.tsx
+// covers both provider branches explicitly.
+beforeAll(async (): Promise<void> => {
+  vi.stubEnv('VITE_MAPBOX_TOKEN', '');
+  vi.resetModules();
+  App = (await import('../App')).default;
+});
+
+afterAll((): void => {
+  vi.unstubAllEnvs();
+});
 
 describe('BUSTARON milestone 1 shell', () => {
   it('defaults to the operator tactical map with mock layers', () => {
