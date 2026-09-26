@@ -32,11 +32,11 @@ related: ["[[m3-scope-backend-ledger-agents]]", "[[vault-lives-at-docs-vault-and
 - Seeded notes: 4 Decisions, 1 Bug, 1 Spec, 1 Progress, 1 Session (this one).
 
 ## Verification
-<!-- filled in at the end of the session -->
-- `bun tools/obsidian.mjs index` run twice → byte-identical `Index.md` (idempotent).
-- `bun tools/obsidian.mjs search "<term>"` → real matching lines with paths.
-- `bun tools/obsidian.mjs new` → `search` round-trip proven, test note deleted, index regenerated.
-- All four gates green (see [[M3 documentation session progress]] for exit codes and test count).
+- `bun tools/obsidian.mjs index` run twice → byte-identical `Index.md` (sha1 `26fbe69852f1edf4c823a7e6ea1f9982701da629` on both runs).
+- `bun tools/obsidian.mjs search "Douglas"` → 9 matching lines printed as `path:line`, exit 0.
+- `bun tools/obsidian.mjs new Decision "Test decision"` → note created; `search "Test decision"` found it; test note then deleted and `index` re-run, leaving 9 notes.
+- `bun tools/obsidian.mjs link` is idempotent — the second run reports "already linked".
+- All four gates green: `tsc -b` 0 · `vite build` 0 · `eslint . --max-warnings=0` 0 · `vitest run` 0 with **66/66 tests passing** across 10 files (raised from 56 by other agents' work this session).
 
 ## Open threads for the next agent
 - PRD defects 1-6 are still open — see [[PRD defects 1-6 deferred out of scope this session]]. They are the first real M3 product work.
