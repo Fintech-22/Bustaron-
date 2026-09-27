@@ -42,10 +42,11 @@ related: []
 
 - [[cad-ring-order-corruption-broke-rfz-containment]] — CAD ring-order corruption broke RFZ containment · status: fixed · 2026-09-26
 
-### Progress (4)
+### Progress (5)
 
 - [[m3-phase-2-3-of-3-proof-of-authority]] — M3 phase 2 — 3-of-3 Proof-of-Authority consensus (B2) · status: done · 2026-09-27
 - [[settle-and-file-endpoints]] — M3 phase 2 — settle + file-approval endpoints · status: done · 2026-09-27
+- [[step-0-r2-stabilize-uncommitted-increment]] — STEP 0 (run 2) — Stabilize the uncommitted increment · status: done · 2026-09-27
 - [[step-0-stabilization-audit-close-out]] — STEP 0 — Stabilization (orchestration run entry #0) · status: done · 2026-09-27
 - [[m3-documentation-session-progress]] — M3 documentation session progress · status: done · 2026-09-26
 
@@ -61,4 +62,4 @@ related: []
 - `bugs/` — Bug notes
 - `sessions/` — Session notes
 
-_16 note(s) · vault: `docs/vault`_
+_17 note(s) · vault: `docs/vault`_

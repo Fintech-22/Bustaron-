@@ -12,6 +12,7 @@ import type {
   SystemWidget,
   WeatherAlert,
 } from '../types/domain';
+import { ledgerTxHash } from '../services/txHash';
 
 export const mockDrones: Drone[] = [
   {
@@ -167,6 +168,9 @@ export const mockWeatherAlerts: WeatherAlert[] = [
       { lat: 22.287, lng: 114.145 },
     ],
     windKph: 31,
+    // PRD FR-OP-V5: a crosswind cell blows towards the east-north-east.
+    windDirectionDeg: 68,
+    precipitationMmH: 4,
     validUntil: '2026-09-24T15:00:00.000Z',
   },
   {
@@ -180,6 +184,8 @@ export const mockWeatherAlerts: WeatherAlert[] = [
       { lat: 22.313, lng: 114.232 },
     ],
     windKph: 44,
+    windDirectionDeg: 205,
+    precipitationMmH: 18,
     validUntil: '2026-09-24T14:35:00.000Z',
   },
 ];
@@ -297,11 +303,52 @@ export const mockApprovalRequests: ApprovalRequest[] = [
   },
 ];
 
-export const mockCreditLedger: CreditLedgerEntry[] = [
-  { id: 'ledger-seed-harbour', walletId: 'wallet-harbour', deltaCredits: 40, reason: 'Escrow for Victoria Harbour morning bid', atIso: '2026-09-24T12:40:00.000Z' },
-  { id: 'ledger-seed-cargo', walletId: 'wallet-cargo', deltaCredits: 120, reason: 'Escrow for Victoria Harbour morning bid', atIso: '2026-09-24T12:46:00.000Z' },
-  { id: 'ledger-seed-urban', walletId: 'wallet-urban', deltaCredits: 65, reason: 'Escrow for Central district evening bid', atIso: '2026-09-24T12:51:00.000Z' },
-];
+/** Anchor timestamp for the seeded 30-day credit history (the mock clock). */
+export const MOCK_CLOCK_ISO = '2026-09-24T13:35:00.000Z';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const LEDGER_WALLETS = ['wallet-harbour', 'wallet-urban', 'wallet-cargo'];
+
+/**
+ * Builds the seeded credit ledger: the three opening escrow rows plus a
+ * deterministic 30-day history so the wallet's 30-day chart and earned/spent
+ * breakdown have real movements to render. Every row is content-addressed with
+ * `ledgerTxHash`, which is the offline-replay stand-in for the on-chain block
+ * hash the `m3-server` backend returns verbatim (PRD S113).
+ */
+function buildSeedLedger(): CreditLedgerEntry[] {
+  const entries: CreditLedgerEntry[] = [
+    { id: 'ledger-seed-harbour', walletId: 'wallet-harbour', deltaCredits: 40, reason: 'Escrow for Victoria Harbour morning bid', atIso: '2026-09-24T12:40:00.000Z' },
+    { id: 'ledger-seed-cargo', walletId: 'wallet-cargo', deltaCredits: 120, reason: 'Escrow for Victoria Harbour morning bid', atIso: '2026-09-24T12:46:00.000Z' },
+    { id: 'ledger-seed-urban', walletId: 'wallet-urban', deltaCredits: 65, reason: 'Escrow for Central district evening bid', atIso: '2026-09-24T12:51:00.000Z' },
+  ];
+
+  const anchorMs = new Date(MOCK_CLOCK_ISO).getTime();
+  for (let offset = 29; offset >= 0; offset -= 1) {
+    const atIso = new Date(anchorMs - offset * DAY_MS).toISOString();
+    const walletId = LEDGER_WALLETS[offset % LEDGER_WALLETS.length];
+    const earned = 20 + ((offset * 7) % 5) * 10;
+    const spent = 10 + ((offset * 3) % 4) * 8;
+    entries.push({
+      id: `ledger-history-earn-${offset}`,
+      walletId,
+      deltaCredits: earned,
+      reason: 'Corridor slot settlement credit',
+      atIso,
+    });
+    entries.push({
+      id: `ledger-history-spend-${offset}`,
+      walletId,
+      deltaCredits: -spent,
+      reason: 'Flight authorisation debit',
+      atIso,
+    });
+  }
+
+  return entries.map((entry: CreditLedgerEntry): CreditLedgerEntry => ({ ...entry, txHash: ledgerTxHash(entry) }));
+}
+
+export const mockCreditLedger: CreditLedgerEntry[] = buildSeedLedger();
 
 export const initialMockState: AppState = {
   drones: mockDrones,

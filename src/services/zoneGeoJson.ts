@@ -75,12 +75,56 @@ export function weatherToGeoJson(alerts: WeatherAlert[]): unknown {
     features: alerts.map((alert) => ({
       type: 'Feature',
       id: alert.id,
-      properties: { id: alert.id, type: alert.type, severity: alert.severity, windKph: alert.windKph },
+      properties: {
+        id: alert.id,
+        type: alert.type,
+        severity: alert.severity,
+        windKph: alert.windKph,
+        windDirectionDeg: alert.windDirectionDeg,
+        precipitationMmH: alert.precipitationMmH,
+      },
       geometry: {
         type: 'Polygon',
         coordinates: [alert.area.map((point: GeoPoint): [number, number] => [point.lng, point.lat])],
       },
     })),
+  };
+}
+
+/** Mean of a WGS84 ring — used to anchor weather wind arrows. */
+function centroidOf(points: GeoPoint[]): GeoPoint {
+  if (points.length === 0) {
+    return { lat: 0, lng: 0 };
+  }
+  const sum = points.reduce(
+    (total: GeoPoint, point: GeoPoint): GeoPoint => ({ lat: total.lat + point.lat, lng: total.lng + point.lng }),
+    { lat: 0, lng: 0 },
+  );
+  return { lat: sum.lat / points.length, lng: sum.lng / points.length };
+}
+
+/**
+ * Point features for the Mapbox wind-arrow symbol layer (PRD FR-OP-V5 / S108):
+ * one arrow per weather cell, rotated to the forecast bearing by the layer's
+ * `icon-rotate` expression.
+ */
+export function weatherArrowsToGeoJson(alerts: WeatherAlert[]): unknown {
+  return {
+    type: 'FeatureCollection',
+    features: alerts.map((alert) => {
+      const center = centroidOf(alert.area);
+      return {
+        type: 'Feature',
+        id: `${alert.id}-arrow`,
+        properties: {
+          id: `${alert.id}-arrow`,
+          severity: alert.severity,
+          windKph: alert.windKph,
+          windDirectionDeg: alert.windDirectionDeg,
+        },
+        geometry: { type: 'Point', coordinates: [center.lng, center.lat] },
+      };
+    }),
   };
 }
 

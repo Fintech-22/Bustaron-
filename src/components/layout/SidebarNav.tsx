@@ -15,38 +15,76 @@ interface SidebarNavProps {
   onNavigate: (section: NavSection) => void;
 }
 
+/**
+ * Operator console sections (PRD §11.2.2 / S111), in PRD order: Live Map,
+ * Flight Plans, Credit Wallet, ESG Scorecard, Fleet, Analytics, Alerts. The
+ * admin-only Approvals Queue and Admin Control follow.
+ *
+ * The Flight Plans entry keeps the words "Mission queue" in its description on
+ * purpose: the internal section id is still `missions` and the mission-queue
+ * vocabulary is retained for operators, while the tab itself carries the PRD's
+ * own name.
+ */
 const navItems: NavItem[] = [
   {
     section: 'operations',
-    label: 'Operations map',
-    description: 'Live tactical overview',
+    label: 'Live Map',
+    description: 'Live tactical overview · 2D landing map',
     role: 'both',
-    icon: 'OPS',
+    icon: 'MAP',
   },
   {
     section: 'missions',
-    label: 'Mission queue',
-    description: 'Planning, A* routes and requests',
+    label: 'Flight Plans',
+    description: 'Mission queue · create, plan, approve',
     role: 'both',
-    icon: 'MIS',
+    icon: 'FLP',
   },
   {
     section: 'wallet',
-    label: 'Credit wallet',
-    description: 'Credits and slot auctions',
+    label: 'Credit Wallet',
+    description: 'Credits, auctions and ledger',
     role: 'both',
     icon: 'CRD',
   },
   {
+    section: 'esg',
+    label: 'ESG Scorecard',
+    description: 'Carbon, noise and compliance',
+    role: 'both',
+    icon: 'ESG',
+  },
+  {
+    section: 'fleet',
+    label: 'Fleet',
+    description: 'Drones, battery and maintenance',
+    role: 'both',
+    icon: 'UAV',
+  },
+  {
+    section: 'analytics',
+    label: 'Analytics',
+    description: 'Traffic heatmaps and cost analysis',
+    role: 'both',
+    icon: 'ANL',
+  },
+  {
+    section: 'alerts',
+    label: 'Alerts',
+    description: 'Real-time alert feed',
+    role: 'both',
+    icon: 'ALR',
+  },
+  {
     section: 'approvals',
-    label: 'Approvals queue',
+    label: 'Approvals Queue',
     description: 'Escrowed flight requests',
     role: 'admin',
     icon: 'APR',
   },
   {
     section: 'admin',
-    label: 'Admin control',
+    label: 'Admin Control',
     description: 'Compliance and system checks',
     role: 'admin',
     icon: 'ADM',

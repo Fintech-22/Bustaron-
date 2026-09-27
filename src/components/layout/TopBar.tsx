@@ -13,8 +13,12 @@ interface TopBarProps {
 
 const sectionTitleById: Record<NavSection, string> = {
   operations: 'Operator tactical dashboard',
-  missions: 'Mission queue and altitude controls',
+  missions: 'Flight plans and mission queue',
   wallet: 'Operator credit wallet',
+  esg: 'Operator ESG scorecard',
+  fleet: 'Operator fleet status',
+  analytics: 'Operator analytics',
+  alerts: 'Operator alert feed',
   approvals: 'Administrative approvals queue',
   admin: 'Administrative compliance overview',
 };

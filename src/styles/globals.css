@@ -972,3 +972,195 @@ h3 {
     padding: var(--space-4);
   }
 }
+
+/* =============================================================================
+   B4 operator console — flight plans, wallet chart, ESG, fleet, analytics, alerts
+   All classes below follow the hand-written convention above and consume the
+   same design tokens; no utility framework is introduced.
+   ========================================================================== */
+
+/* --- Semantic data table (Fleet roster, ESG noise bands) --- */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-small);
+}
+
+.data-table caption {
+  margin-bottom: var(--space-2);
+  text-align: left;
+}
+
+.data-table th,
+.data-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.data-table thead th {
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.data-table tbody tr:hover {
+  background: rgba(30, 41, 59, 0.4);
+}
+
+.mono {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+}
+
+/* --- Flight plan editor --- */
+.flight-plan-save,
+.wallet-scope-row {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.flight-plan-save input,
+.wallet-scope-row select,
+#edit-plan-name,
+#edit-plan-status {
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-panel-strong);
+  color: var(--color-text);
+}
+
+.flight-plan-actions,
+.alert-actions,
+.alert-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.flight-plan-actions .control-button,
+.alert-actions .control-button {
+  padding: var(--space-2) var(--space-3);
+}
+
+.flight-plan-detail {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.route-preview {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #07101a;
+}
+
+.route-preview svg {
+  display: block;
+  width: 100%;
+  height: 11rem;
+}
+
+.route-preview .helper-text {
+  margin: var(--space-2) var(--space-3);
+}
+
+/* --- 30-day credit chart --- */
+.credit-chart {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(2, 6, 23, 0.38);
+}
+
+.credit-chart svg {
+  display: block;
+  width: 100%;
+  height: 8rem;
+}
+
+.credit-chart .helper-text {
+  margin: var(--space-2) 0 0;
+}
+
+.tx-hash {
+  word-break: break-all;
+}
+
+/* --- Analytics heatmap --- */
+.heatmap {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #07101a;
+}
+
+.heatmap svg {
+  display: block;
+  width: 100%;
+  height: 16rem;
+}
+
+.heatmap .helper-text {
+  margin: var(--space-2) var(--space-3);
+}
+
+/* --- Alert feed (PRD S115) --- */
+.alert-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alert-item {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  background: rgba(15, 23, 42, 0.54);
+}
+
+.alert-item[data-severity='critical'] {
+  border-left-color: var(--color-red);
+}
+
+.alert-item[data-severity='warning'] {
+  border-left-color: var(--color-amber);
+}
+
+.alert-item[data-severity='info'] {
+  border-left-color: var(--color-cyan);
+}
+
+.alert-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Wider tiers: lay the flight-plan editor and wallet scope out in two columns. */
+@media (min-width: 768px) {
+  .flight-plan-save,
+  .wallet-scope-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: center;
+  }
+
+  .flight-plan-save input,
+  .wallet-scope-row select {
+    grid-column: span 1;
+  }
+
+  .flight-plan-save .control-button {
+    justify-self: start;
+  }
+}
+

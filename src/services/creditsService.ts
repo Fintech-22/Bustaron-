@@ -1,4 +1,5 @@
 import type { ApprovalRequest, CreditLedgerEntry, CreditWallet, SlotAuction } from '../types/domain';
+import { ledgerTxHash } from './txHash';
 
 export const CREDITS_PER_100KM = 100;
 export const CREDITS_PER_HIGH_RISK_SEGMENT = 25;
@@ -143,13 +144,16 @@ export function awardAuction(
   }
   const winnerWallet: CreditWallet = nextWallets[winnerIndex];
 
-  const ledgerEntries: CreditLedgerEntry[] = auction.bids.map((bid): CreditLedgerEntry => ({
-    id: `ledger-${bid.id}`,
-    walletId: bid.walletId,
-    deltaCredits: bid.id === winningBid.id ? -bid.credits : 0,
-    reason: bid.id === winningBid.id ? `Won auction ${auction.slotName}` : `Lost auction ${auction.slotName}`,
-    atIso: nowIso,
-  }));
+  const ledgerEntries: CreditLedgerEntry[] = auction.bids.map((bid): CreditLedgerEntry => {
+    const entry: CreditLedgerEntry = {
+      id: `ledger-${bid.id}`,
+      walletId: bid.walletId,
+      deltaCredits: bid.id === winningBid.id ? -bid.credits : 0,
+      reason: bid.id === winningBid.id ? `Won auction ${auction.slotName}` : `Lost auction ${auction.slotName}`,
+      atIso: nowIso,
+    };
+    return { ...entry, txHash: ledgerTxHash(entry) };
+  });
 
   const awardedAuction: SlotAuction = {
     ...auction,
@@ -214,15 +218,14 @@ export function settleAuction(
   });
   void owner;
 
-  const ledgerEntries: CreditLedgerEntry[] = [
-    {
-      id: `ledger-settle-${auctionId}`,
-      walletId: ownerWalletId,
-      deltaCredits: credits,
-      reason: `Settled auction ${auction.slotName}`,
-      atIso: nowIso,
-    },
-  ];
+  const settleEntry: CreditLedgerEntry = {
+    id: `ledger-settle-${auctionId}`,
+    walletId: ownerWalletId,
+    deltaCredits: credits,
+    reason: `Settled auction ${auction.slotName}`,
+    atIso: nowIso,
+  };
+  const ledgerEntries: CreditLedgerEntry[] = [{ ...settleEntry, txHash: ledgerTxHash(settleEntry) }];
 
   const nextAuctions = auctions.map((entry: SlotAuction): SlotAuction =>
     entry.id === auctionId ? { ...entry, status: 'settled' as const } : entry,
@@ -285,18 +288,17 @@ export function decideApproval(
         }
       : entry,
   );
-  const ledgerEntries: CreditLedgerEntry[] = [
-    {
-      id: `ledger-${requestId}-${decision}`,
-      walletId: approval.walletId,
-      deltaCredits: decision === 'rejected' ? releasedCredits : 0,
-      reason:
-        trimmedReason.length > 0
-          ? `${decision === 'rejected' ? 'Refund for rejected' : 'Escrow burned for'} ${approval.missionName} — ${trimmedReason}`
-          : `${decision === 'rejected' ? 'Refund for rejected' : 'Escrow burned for'} ${approval.missionName}`,
-      atIso: nowIso,
-    },
-  ];
+  const decisionEntry: CreditLedgerEntry = {
+    id: `ledger-${requestId}-${decision}`,
+    walletId: approval.walletId,
+    deltaCredits: decision === 'rejected' ? releasedCredits : 0,
+    reason:
+      trimmedReason.length > 0
+        ? `${decision === 'rejected' ? 'Refund for rejected' : 'Escrow burned for'} ${approval.missionName} — ${trimmedReason}`
+        : `${decision === 'rejected' ? 'Refund for rejected' : 'Escrow burned for'} ${approval.missionName}`,
+    atIso: nowIso,
+  };
+  const ledgerEntries: CreditLedgerEntry[] = [{ ...decisionEntry, txHash: ledgerTxHash(decisionEntry) }];
   const nextApprovals = approvals.map((entry: ApprovalRequest): ApprovalRequest =>
     entry.id === requestId ? { ...entry, status: decision, decisionReason: trimmedReason.length > 0 ? trimmedReason : undefined } : entry,
   );

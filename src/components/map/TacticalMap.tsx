@@ -4,6 +4,7 @@ import { DroneMarker } from './DroneMarker';
 import { MapLayerControls } from './MapLayerControls';
 import { AltitudeBandControls } from './AltitudeBandControls';
 import { droneInBand } from '../../services/altitudeBands';
+import { ringCentroid } from '../../services/mapProjection';
 
 interface ProjectedPoint {
   x: number;
@@ -87,6 +88,19 @@ export function TacticalMap(): JSX.Element {
             <pattern id="fine-grid" width="10" height="10" patternUnits="userSpaceOnUse">
               <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(148,163,184,0.14)" strokeWidth="0.16" />
             </pattern>
+            {/*
+              PRD FR-OP-V3 / S106: restricted zones are red outlines with DIAGONAL
+              HATCHING. The hatch is a 45°-rotated user-space pattern so it reads
+              as hazard marking rather than a solid fill.
+            */}
+            <pattern id="rfz-hatch" width="2.4" height="2.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <rect width="2.4" height="2.4" fill="rgba(251,113,133,0.14)" />
+              <line x1="0" y1="0" x2="0" y2="2.4" stroke="var(--color-red)" strokeWidth="0.5" />
+            </pattern>
+            {/* PRD FR-OP-V5 / S108: precipitation shading for weather cells. */}
+            <pattern id="precip-hatch" width="1.6" height="1.6" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
+              <line x1="0" y1="0" x2="0" y2="1.6" stroke="var(--color-blue)" strokeWidth="0.35" />
+            </pattern>
             <linearGradient id="water-gradient" x1="0" x2="1" y1="0" y2="1">
               <stop offset="0%" stopColor="#0b3555" />
               <stop offset="100%" stopColor="#082236" />
@@ -100,23 +114,63 @@ export function TacticalMap(): JSX.Element {
           <text x="9" y="33" fill="rgba(229,237,247,0.55)" fontSize="3.3">KOWLOON</text>
           <text x="42" y="73" fill="rgba(229,237,247,0.55)" fontSize="3.3">HONG KONG ISLAND</text>
           <text x="38" y="55" fill="rgba(229,237,247,0.42)" fontSize="2.7">VICTORIA HARBOUR</text>
-          {activeLayers.restrictedZones && zones.map((zone: AirspaceZone): JSX.Element => (
-            <polygon
-              key={zone.id}
-              points={pointsToSvg(zone.polygon)}
-              fill={riskColorByName[zone.riskLevel]}
-              fillOpacity={zone.kind === 'corridor' ? 0.08 : 0.16}
-              stroke={riskColorByName[zone.riskLevel]}
-              strokeWidth="0.45"
-              strokeDasharray={zone.kind === 'corridor' ? '1.4 1.2' : '0'}
-            />
-          ))}
-          {activeLayers.weather && weatherAlerts.map((alert: WeatherAlert): JSX.Element => (
-            <g key={alert.id}>
-              <polygon points={pointsToSvg(alert.area)} fill={riskColorByName[alert.severity]} fillOpacity="0.12" stroke={riskColorByName[alert.severity]} strokeWidth="0.35" />
-              <path d="M14 20 l8 3 l-8 3 M21 23 H9" transform={`translate(${projectPoint(alert.area[0]).x - 8} ${projectPoint(alert.area[0]).y - 8})`} stroke={riskColorByName[alert.severity]} strokeWidth="0.9" fill="none" />
-            </g>
-          ))}
+          {/*
+            PRD FR-OP-V3 / S106: restricted (RFZ) zones render as red outlines with
+            diagonal hatching; sandbox zones render as amber outlines. Other zone
+            classes keep their risk-tinted fill.
+          */}
+          {activeLayers.restrictedZones && zones.map((zone: AirspaceZone): JSX.Element => {
+            const restricted: boolean = zone.kind === 'rfz';
+            const sandbox: boolean = zone.kind === 'sandbox';
+            const stroke: string = restricted ? 'var(--color-red)' : sandbox ? 'var(--color-amber)' : riskColorByName[zone.riskLevel];
+            const fill: string = restricted ? 'url(#rfz-hatch)' : sandbox ? 'var(--color-amber)' : riskColorByName[zone.riskLevel];
+            const fillOpacity: number = restricted ? 1 : sandbox ? 0.12 : zone.kind === 'corridor' ? 0.08 : 0.16;
+            return (
+              <polygon
+                key={zone.id}
+                data-zone-id={zone.id}
+                data-zone-kind={zone.kind}
+                points={pointsToSvg(zone.polygon)}
+                fill={fill}
+                fillOpacity={fillOpacity}
+                stroke={stroke}
+                strokeWidth={restricted ? 0.55 : 0.45}
+                strokeDasharray={zone.kind === 'corridor' ? '1.4 1.2' : '0'}
+              />
+            );
+          })}
+          {/*
+            PRD FR-OP-V5 / S108: weather overlay — precipitation zones plus a wind
+            direction arrow rotated to the forecast bearing, labelled with the
+            wind speed.
+          */}
+          {activeLayers.weather && weatherAlerts.map((alert: WeatherAlert): JSX.Element => {
+            const color: string = riskColorByName[alert.severity];
+            const centroid = projectPoint(ringCentroid(alert.area));
+            return (
+              <g key={alert.id} data-weather-id={alert.id}>
+                <polygon
+                  data-weather-zone={alert.id}
+                  points={pointsToSvg(alert.area)}
+                  fill={alert.precipitationMmH > 0 ? 'url(#precip-hatch)' : 'none'}
+                  fillOpacity="0.5"
+                  stroke={color}
+                  strokeWidth="0.35"
+                  strokeDasharray="1 0.8"
+                />
+                <g
+                  data-weather-arrow="wind"
+                  data-wind-kph={alert.windKph}
+                  transform={`translate(${centroid.x.toFixed(2)} ${centroid.y.toFixed(2)}) rotate(${alert.windDirectionDeg})`}
+                >
+                  <path d="M -3.2 0 L 3.2 0 M 1.4 -1.6 L 3.2 0 L 1.4 1.6" stroke={color} strokeWidth="0.5" fill="none" strokeLinecap="round" />
+                </g>
+                <text x={centroid.x + 3.6} y={centroid.y - 2.2} fill={color} fontSize="2.4">
+                  {alert.windKph} kph
+                </text>
+              </g>
+            );
+          })}
           {activeLayers.routes && missions.map((mission: Mission): JSX.Element => (
             <polyline
               key={mission.id}

@@ -277,6 +277,14 @@ check(
     any(row["id"] == "ledger-settle-auction-vh-morning" and row["walletId"] == "wallet-harbour" and row["deltaCredits"] == 120 for row in ledger),
     json.dumps(ledger[-1]) if ledger else "empty",
 )
+# PRD S113: the wallet's transaction hashes must be the real anchoring block hashes.
+# `submit_tx` stamps every ledger row a transaction appends with the hash of the
+# block that carries it, so a 64-hex `txHash` must be present on every row here.
+check(
+    "ledger rows carry a 64-hex on-chain tx hash (PRD S113)",
+    len(ledger) > 0 and all(isinstance(row.get("txHash"), str) and len(row["txHash"]) == 64 for row in ledger),
+    json.dumps(ledger[-1]) if ledger else "empty",
+)
 
 status, unsettled = post("/chain/tx", {"type": "AUCTION_SETTLE", "payload": {"auctionId": "auction-cbd-evening", "ownerWalletId": "wallet-harbour"}})
 check("settle of a non-awarded auction refused with 409", status == 409, f"{status} {unsettled}")
@@ -569,6 +577,28 @@ check("chain valid after restart", get("/api/health")["chainValid"] is True)
 zones = get("/api/zones")
 check("zones endpoint serves the CAD pack", isinstance(zones, dict) and len(zones.get("features", [])) == 284)
 check("fleet/missions endpoints respond", isinstance(get("/api/fleet"), list) and isinstance(get("/api/missions"), list))
+
+# North star item 5: `/api/fleet` and `/api/missions` must return REAL seeded rows,
+# not empty arrays beside a populated mock UI. The seed mirrors the frontend fleet
+# and mission set, so both endpoints must be non-empty with the expected fields.
+fleet = get("/api/fleet")
+check(
+    "fleet endpoint serves a non-empty seeded roster (north star 5)",
+    isinstance(fleet, list)
+    and len(fleet) > 0
+    and all(
+        {"id", "callsign", "operatorId", "batteryPct", "status", "position"} <= set(drone) for drone in fleet
+    ),
+    f"{len(fleet) if isinstance(fleet, list) else fleet} rows",
+)
+missions = get("/api/missions")
+check(
+    "missions endpoint serves a non-empty seeded list (north star 5)",
+    isinstance(missions, list)
+    and len(missions) > 0
+    and all({"id", "name", "route", "status", "riskLevel"} <= set(mission) for mission in missions),
+    f"{len(missions) if isinstance(missions, list) else missions} rows",
+)
 
 print()
 print("ALL CHECKS PASSED" if failures == 0 else f"{failures} CHECK(S) FAILED")

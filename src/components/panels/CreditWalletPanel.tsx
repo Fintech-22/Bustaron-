@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { EmptyState } from '../common/EmptyState';
+import { CreditChart } from '../common/CreditChart';
 import { quoteRouteCredits } from '../../services/creditsService';
+import { buildCreditSeries } from '../../services/creditSeries';
 import { listAvailableBackends, useDashboardStore } from '../../store/dashboardStore';
 import type { DataBackend } from '../../services/dataBackend';
 import type { AuctionStatus, CreditLedgerEntry, CreditWallet, RiskLevel, SlotAuction } from '../../types/domain';
@@ -55,6 +57,12 @@ function LedgerRow({ entry }: { entry: CreditLedgerEntry }): JSX.Element {
         <span style={tone}>{deltaLabel} credits</span>
       </div>
       <p className="helper-text">{entry.atIso}</p>
+      <p
+        className="helper-text mono tx-hash"
+        title={entry.txHash ? `Transaction ${entry.txHash}` : 'No transaction hash recorded for this legacy row'}
+      >
+        {entry.txHash ? `tx ${entry.txHash}` : 'tx hash not recorded'}
+      </p>
     </li>
   );
 }
@@ -162,8 +170,15 @@ export function CreditWalletPanel(): JSX.Element {
   const auctions = useDashboardStore((state) => state.auctions);
   const creditLedger = useDashboardStore((state) => state.creditLedger);
   const backendId = useDashboardStore((state) => state.backendId);
+  const lastUpdatedIso = useDashboardStore((state) => state.lastUpdatedIso);
+  const currentOperatorId = useDashboardStore((state) => state.currentOperatorId);
   const setBackend = useDashboardStore((state) => state.setBackend);
   const backends: DataBackend[] = listAvailableBackends();
+
+  const [scope, setScope] = useState<string>('all');
+  const effectiveScope = scope === 'all' ? null : scope;
+  const series = buildCreditSeries(creditLedger, effectiveScope, lastUpdatedIso);
+  const scopedWallet = wallets.find((wallet: CreditWallet): boolean => wallet.id === currentOperatorId);
 
   const totalPosition = wallets.reduce((total, wallet) => total + wallet.balanceCredits + wallet.reservedCredits, 0);
   const exampleQuote = quoteRouteCredits(18500, 1);
@@ -196,6 +211,12 @@ export function CreditWalletPanel(): JSX.Element {
         ))}
       </div>
 
+      {scopedWallet && (
+        <p className="helper-text">
+          Signed in as {scopedWallet.operatorName} · balance {scopedWallet.balanceCredits} cr, reserved {scopedWallet.reservedCredits} cr.
+        </p>
+      )}
+
       {wallets.length === 0 ? (
         <EmptyState
           compact
@@ -209,6 +230,32 @@ export function CreditWalletPanel(): JSX.Element {
             <WalletCard key={wallet.id} wallet={wallet} />
           ))}
         </div>
+      )}
+
+      {creditLedger.length > 0 && (
+        <>
+          <h3 className="panel__title spaced-top--lg">Credit movement · 30 days</h3>
+          <div className="wallet-scope-row" role="group" aria-label="Wallet scope selection">
+            <label className="label-text" htmlFor="wallet-scope">Wallet scope</label>
+            <select id="wallet-scope" value={scope} onChange={(event) => setScope(event.target.value)}>
+              <option value="all">All wallets</option>
+              {wallets.map((wallet: CreditWallet) => (
+                <option key={wallet.id} value={wallet.id}>{wallet.operatorName}</option>
+              ))}
+            </select>
+          </div>
+          <dl className="drone-detail-grid" aria-label="Credit breakdown">
+            <div className="detail-card"><dt>Earned</dt><dd>{series.earnedTotal} cr</dd></div>
+            <div className="detail-card"><dt>Spent</dt><dd>{series.spentTotal} cr</dd></div>
+            <div className="detail-card"><dt>Net</dt><dd>{series.netTotal} cr</dd></div>
+          </dl>
+          <CreditChart
+            ledger={creditLedger}
+            walletId={effectiveScope}
+            endIso={lastUpdatedIso}
+            label={`Credit earned and spent over the last 30 days for ${scope === 'all' ? 'all wallets' : scope}`}
+          />
+        </>
       )}
 
       <h3 className="panel__title spaced-top--lg">Open slot auctions</h3>

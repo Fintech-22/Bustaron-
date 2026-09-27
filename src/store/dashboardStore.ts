@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import { layerDefinitions } from '../config/layers';
 import type {
+  Alert,
   AppState,
   ApprovalRequest,
   CreditLedgerEntry,
   Drone,
   LayerId,
+  Mission,
   NavSection,
   UserRole,
 } from '../types/domain';
@@ -19,6 +21,9 @@ import { evaluateZonesAtPoint } from '../services/geo/pointInPolygon';
 import type { ZoneHit } from '../services/geo/pointInPolygon';
 import { DEFAULT_ALTITUDE_BAND_M } from '../services/altitudeBands';
 import type { BackendId } from '../services/dataBackend';
+import { createMission, deleteMissionFromList, updateMissionList } from '../services/missionService';
+import type { MissionDraft } from '../services/missionService';
+import { deriveAlerts, preserveAcknowledgements } from '../services/alerts';
 
 export interface DashboardStore extends AppState {
   activeRole: UserRole;
@@ -40,6 +45,8 @@ export interface DashboardStore extends AppState {
   routeZoneHits: ZoneHit[];
   /** Error message from the last failed action (planning, bidding, decisions). */
   lastError: string | null;
+  /** Derived real-time alert feed (PRD S115); acknowledgements persist by id. */
+  alerts: Alert[];
   initialize: () => void;
   setRole: (role: UserRole) => void;
   navigate: (section: NavSection) => void;
@@ -63,10 +70,30 @@ export interface DashboardStore extends AppState {
   awardTopBid: (auctionId: string) => void;
   /** Approves or rejects a pending flight approval request. */
   decideApprovalRequest: (requestId: string, decision: 'approved' | 'rejected', reason?: string) => void;
+  /** PRD S112: creates a flight plan from a draft and returns its new id. */
+  addMission: (draft: MissionDraft) => string;
+  /** PRD S112: applies a partial update to an existing flight plan. */
+  updateMission: (id: string, patch: Partial<MissionDraft>) => void;
+  /** PRD S112: deletes a flight plan by id. */
+  deleteMission: (id: string) => void;
+  /** PRD S115: marks one alert acknowledged. */
+  acknowledgeAlert: (id: string) => void;
+  /** PRD S115: acknowledges every outstanding alert. */
+  acknowledgeAllAlerts: () => void;
 }
 
 const initialBackend: DataBackend = resolveBackend('mock');
 const initialState: AppState = initialBackend.loadInitialState();
+
+/** Re-derives the alert feed while preserving prior acknowledgements by id. */
+function alertsFrom(state: AppState, previous: Alert[]): Alert[] {
+  const acknowledgedIds = new Set(
+    previous.filter((alert: Alert): boolean => alert.acknowledged).map((alert: Alert): string => alert.id),
+  );
+  return preserveAcknowledgements(deriveAlerts(state.drones, state.weatherAlerts, state.lastUpdatedIso), acknowledgedIds);
+}
+
+const initialAlerts: Alert[] = deriveAlerts(initialState.drones, initialState.weatherAlerts, initialState.lastUpdatedIso);
 
 const initialLayerState: Record<LayerId, boolean> = layerDefinitions.reduce(
   (layers: Record<LayerId, boolean>, layer): Record<LayerId, boolean> => ({
@@ -97,6 +124,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   plannedRoute: null,
   routeZoneHits: [],
   lastError: null,
+  alerts: initialAlerts,
   initialize: (): void => {
     const backend: DataBackend = resolveBackend(get().backendId);
     const loadedState: AppState = backend.loadInitialState();
@@ -113,6 +141,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       plannedRoute: null,
       routeZoneHits: [],
       lastError: null,
+      alerts: deriveAlerts(loadedState.drones, loadedState.weatherAlerts, loadedState.lastUpdatedIso),
     });
   },
   setRole: (role: UserRole): void => {
@@ -167,6 +196,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       approvalRequests: nextState.approvalRequests,
       creditLedger: nextState.creditLedger,
       lastUpdatedIso: nextState.lastUpdatedIso,
+      alerts: alertsFrom(nextState, current.alerts),
     });
   },
   setBackend: (id: BackendId): void => {
@@ -188,6 +218,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       plannedRoute: null,
       routeZoneHits: [],
       lastError: null,
+      alerts: deriveAlerts(loadedState.drones, loadedState.weatherAlerts, loadedState.lastUpdatedIso),
     });
     // Networked backends hydrate async; the sync composition above renders
     // immediately, then this replaces the server-persisted slices.
@@ -201,6 +232,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
         drones: serverState.drones,
         missions: serverState.missions,
         lastUpdatedIso: serverState.lastUpdatedIso,
+        alerts: alertsFrom(serverState, get().alerts),
       });
     });
   },
@@ -246,6 +278,33 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     } catch (error) {
       set({ lastError: error instanceof Error ? error.message : 'Decision failed' });
     }
+  },
+  /** PRD S112: create a flight plan from a draft; returns the new plan's id. */
+  addMission: (draft: MissionDraft): string => {
+    const state = get();
+    const mission: Mission = createMission(draft, state.missions);
+    set({ missions: [...state.missions, mission], lastError: null });
+    return mission.id;
+  },
+  /** PRD S112: partial update of an existing flight plan. */
+  updateMission: (id: string, patch: Partial<MissionDraft>): void => {
+    const state = get();
+    set({ missions: updateMissionList(state.missions, id, patch), lastError: null });
+  },
+  /** PRD S112: delete a flight plan. */
+  deleteMission: (id: string): void => {
+    const state = get();
+    set({ missions: deleteMissionFromList(state.missions, id), lastError: null });
+  },
+  /** PRD S115: acknowledge one alert (state actually changes). */
+  acknowledgeAlert: (id: string): void => {
+    set({
+      alerts: get().alerts.map((alert: Alert): Alert => (alert.id === id ? { ...alert, acknowledged: true } : alert)),
+    });
+  },
+  /** PRD S115: acknowledge every outstanding alert. */
+  acknowledgeAllAlerts: (): void => {
+    set({ alerts: get().alerts.map((alert: Alert): Alert => ({ ...alert, acknowledged: true })) });
   },
 }));
 

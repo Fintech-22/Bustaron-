@@ -18,8 +18,19 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (!response.ok) {
-    const detail = await response.json().catch((): { detail?: string } => ({}));
-    throw new Error(typeof detail.detail === 'string' ? detail.detail : `${path} failed: ${response.status}`);
+    // A non-ok body is NOT guaranteed to be a JSON object. FastAPI answers its
+    // own errors with `{"detail": ...}`, but a proxy or a dead upstream can
+    // return `null`, an array, or an empty body. `.catch()` only covers a parse
+    // REJECTION — it does not cover a `null` RESOLUTION — so reading `.detail`
+    // off the result threw a bare `TypeError: null is not an object` that hid
+    // the real HTTP status (reproduced by running `probe_m3_seam.ts` with the
+    // server down). Read the body defensively and fall back to the status.
+    const body: unknown = await response.json().catch((): null => null);
+    const detail =
+      typeof body === 'object' && body !== null && typeof (body as { detail?: unknown }).detail === 'string'
+        ? (body as { detail: string }).detail
+        : null;
+    throw new Error(detail ?? `${path} failed: ${response.status}`);
   }
   return response.json() as Promise<T>;
 }
@@ -65,6 +76,16 @@ export interface ServerWallet {
   reservedCredits: number;
 }
 
+export interface ServerLedgerEntry {
+  id: string;
+  walletId: string;
+  deltaCredits: number;
+  reason: string;
+  atIso: string;
+  /** Anchoring block hash, stamped by `submit_tx` (PRD S113 on-chain tx hash). */
+  txHash?: string;
+}
+
 /** Submits a transaction and anchors it on the server's chain. */
 export async function submitTx(type: string, payload: Record<string, unknown>): Promise<{ blockHeight: number; blockHash: string }> {
   return fetchJson<{ ok: boolean; blockHeight: number; blockHash: string }>('/chain/tx', {
@@ -81,6 +102,7 @@ function composeFromServer(serverState: {
   auctions: ServerAuction[];
   approvals: ServerApproval[];
   wallets: ServerWallet[];
+  ledger: ServerLedgerEntry[];
 }): AppState {
   const mock = new MockDataService().loadInitialState();
   const zones = loadCadZones();
@@ -93,7 +115,9 @@ function composeFromServer(serverState: {
       ...approval,
       decisionReason: approval.decisionReason ?? undefined,
     })),
-    creditLedger: mock.creditLedger,
+    // PRD S113: the server ledger carries the real anchoring block hash, so the
+    // wallet's tx hashes are on-chain rather than content-addressed offline.
+    creditLedger: serverState.ledger,
   };
 }
 
@@ -138,13 +162,14 @@ export class M3Backend implements DataBackend {
   /** Async hydration from the live server; falls back offline gracefully. */
   async hydrate(): Promise<AppState> {
     try {
-      const [auctions, approvals, wallets] = await Promise.all([
+      const [auctions, approvals, wallets, ledger] = await Promise.all([
         fetchJson<ServerAuction[]>('/api/auctions'),
         fetchJson<ServerApproval[]>('/api/approvals'),
         fetchJson<ServerWallet[]>('/api/wallets'),
+        fetchJson<ServerLedgerEntry[]>('/api/ledger'),
       ]);
       await this.refreshLabel();
-      this.cachedState = composeFromServer({ auctions, approvals, wallets });
+      this.cachedState = composeFromServer({ auctions, approvals, wallets, ledger });
       return this.cachedState;
     } catch {
       // Server unreachable: degrade to the offline CAD composition.

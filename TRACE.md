@@ -1567,3 +1567,147 @@ down from `:8000` rather than race the shared resources**, and re-ran my three *
 (S6) — the reason S4 stays PARTIAL; (b) the probe is still **not concurrency-safe** (owns `:8000` +
 `state.json`), an environment footgun, not a code defect; (c) `.workbuddy-ai/memory/MEMORY.md` still
 showed the pre-B2 HEAD (`3f46335`) and `api 52/52` — refreshed in this close-out.
+
+---
+
+# ══ ORCHESTRATION RUN 2 — STEP 0: STABILIZE (2026-09-27, entry #0) ══
+
+> Second orchestration run. Same hierarchy: Overview → Supervisor → Worker + paired Reviewer.
+> STEP 0 mandate: *"Do not start new work until the codebase builds clean and existing tests pass."*
+> This entry is the STEP 0 record. Nothing was written until the four gates + all four probes were
+> re-run green **on the working tree as found**.
+
+## [SUPERVISOR:step-0-r2] What was found
+
+**1. The audit trail was already read and re-confirmed** (`VERIFICATION_AUDIT.md` §1–§7,
+`AUDIT_SUMMARY.md`). Its corrections stand: `probe_lifecycle` is **38/38** (not 36), the skycell
+lattice is **594** (not 462), `probe_api` is only idempotent because it now self-reseeds, and
+**286 vs 284 zones is an adjudicated PRD-vs-code conflict where the code is right** (2 byte-identical
+duplicates dropped by name+ring-geometry hash).
+
+**2. The headline finding of this pass: an entire uncommitted, unlogged, unverified feature set was
+sitting in the working tree.** 15 modified files + 21 untracked files (15 source, 6 test), authored
+in the 04:11–04:19 window of the previous session and **never committed**. The last four commits on
+`main` (`ee4590e`, `42caf2e`, `3b52e82`, `9b9063d`) are **docs-only** — TRACE, vault notes,
+`milestone-03.md`. Nothing in `.workbuddy-ai/memory/2026-09-27.md` mentions this work.
+
+What it is: a coherent PRD-gap increment — **S111** (7 operator sidebar entries), **S112** (Flight
+Plans CRUD), **S113** (on-chain ledger tx hashes), **S114** (fleet roster), **S115** (alerts feed),
+plus server-side `SEED_DRONES`/`SEED_MISSIONS` closing the audit's *"`/api/fleet` and `/api/missions`
+return empty arrays"* finding, and a hand-written FIPS 180-4 SHA-256 (`src/services/txHash.ts`)
+with published test vectors.
+
+**3. Baseline measured on the tree as found — four gates were ALREADY GREEN**
+(tsc 0 · build 0 · eslint 0 · **vitest 121/121, 20 files**). So the increment was not broken; it was
+**unverified**. Gates green is not the same as correct — the three defects below were all invisible
+to `tsc`, `eslint` and `vitest`.
+
+## [REVIEWER:step-0-r2] Concerns — ranked, with the evidence that found them
+
+Written **during** the pass, in the order discovered. Every one was found by *running*, not reading.
+
+**1. [BLOCKER, FIXED] The Mapbox overlay silently dropped its two new layers and logged 12 errors.**
+`tools/screenshot.mjs` reported **13 console errors**. Six were this pair, repeated:
+
+```
+Error: Layer with id "rfz-line" does not exist on this map.
+Error: Layer with id "mission-line" does not exist on this map.
+```
+
+Root cause — `MapboxMap.tsx`. `Map#addLayer(layer, beforeId)` only accepts a `beforeId` that
+**already exists**. Given an unknown id it fires the error above and **returns without adding the
+layer**. The new `zoneHatch` layer was anchored to `LAYER.zoneLine`, and `weatherArrow` to
+`LAYER.missionLine` — both of which are added *later in the same function*. So `rfz-hatch-fill` and
+`weather-arrow` were **never added at all**. Impact: PRD FR-OP-V3/S106 (hatched RFZ) and
+FR-OP-V5/S108 (wind arrows) did not render on the Mapbox path, while `mapOverlays.test.tsx` stayed
+green because it exercises the **2D SVG** map, not Mapbox. Six occurrences = six `buildOverlay`
+runs (one per style load / provider switch).
+
+**2. [MEDIUM, FIXED] `fetchJson` lost the HTTP status behind a `TypeError`.**
+`m3Backend.ts:21` read `.detail` off `await response.json().catch(() => ({}))`. `.catch()` covers a
+parse **rejection** but not a body that **resolves to `null`**, so a non-ok response with a `null`
+body threw `TypeError: null is not an object (evaluating 'detail.detail')` and the real status
+(`502`, `409`, …) was destroyed. Reproduced by running `probe_m3_seam.ts` with `:8000` down — which
+is exactly what a new engineer sees on a cold start. `hydrate()` swallows it, but `submitTx()`
+surfaces it to the user.
+
+**3. [COSMETIC, FIXED] `/favicon.ico` 404** — no `public/` dir and no declared icon, so the browser
+requested it and the harness counted it as a console error, **masking real ones**. Pre-existing
+(`index.html` was untouched by the increment).
+
+**Ranking rationale:** #1 was the only one that changes what the user sees; #2 was the only one that
+corrupts an error message; #3 was noise that hid signal. #1 and #3 were both surfaced by the same
+tool and would have been invisible to any amount of reading.
+
+## [WORKER:step-0-r2] What was fixed
+
+| # | Fix | File |
+|---|---|---|
+| 1 | Dropped the invalid `beforeId` arguments on the two new `addLayer` calls — insertion order already produces the intended `fill → hatch → line` and `weather → arrows → missions` stacking. Added a comment recording **why** no anchor is passed, so it is not "tidied" back in. | `src/components/map/MapboxMap.tsx` |
+| 2 | Read the error body as `unknown`, accept `detail` only when it is a non-null object carrying a string, else fall back to `` `${path} failed: ${status}` ``. | `src/services/m3Backend.ts` |
+| 3 | Declared an inline data-URI SVG favicon. | `index.html` |
+| 4 | New regression test — 7 cases (object detail, `null` body, array body, empty body, non-string detail, POST path, success path). | `src/test/m3Backend.test.ts` (new) |
+
+**Verification — the fix for #1 and the test for #2 were both proved DISCRIMINATING, not just green:**
+
+- **#1, by live measurement.** With the CAD pack selected via the real `setBackend` code path:
+  source = **284 features (260 `rfz` + 24 `sandbox`)**; rendered = **fill 134 · hatch 125 · line 135 ·
+  arrow 2**; console errors **none**. Before the fix `rfz-hatch-fill` did not exist in
+  `getStyle().layers` at all. The 134/135 fill/line counts reproduce the audit's independent
+  measurement exactly, so nothing else regressed.
+- **#2, by reverting the fix.** With the pre-fix line restored, `m3Backend.test.ts` fails **2/7**;
+  with the fix, **7/7**. A test that passes both ways would have been worthless.
+
+**Not touched:** the 15 modified + 15 new source files and 6 test files of the increment itself.
+STEP 0's mandate is to make the tree build and pass and to record it — **not** to re-litigate work
+that is coherent and now verified. Their provenance is recorded as *unknown author, previous
+session, uncommitted*, and they are committed here under a trace entry that says so.
+
+## [SUPERVISOR:step-0-r2] VERDICT — PASS
+
+| Gate / probe | As found | After fixes |
+|---|---|---|
+| `tsc -b` | 0 | **0** |
+| `vite build` | 0 | **0** |
+| `eslint . --max-warnings=0` | 0 | **0** |
+| `vitest run` | 121/121 (20 files) | **128/128 (21 files)** |
+| `scripts/probe_lifecycle.ts` | — | **38/38 PASS** |
+| `scripts/probe_routes.ts` | — | **42/42 OK** |
+| `scripts/probe_m3_seam.ts` (live `:8000`, pristine) | **crashed — TypeError** | **7/7 PASS** |
+| `server/probe_api.py` (sole runner, `:8000`, pristine) | — | **69/69 PASS** |
+| `tools/verify-mapbox.mjs` | — | **8/8** |
+| `tools/screenshot.mjs` console errors | **13** | **0** |
+| `tools/check-layout.mjs` (320 / 1440) | — | no horizontal overflow |
+
+`probe_api` grew 64 → **69** assertions with this increment (S113 tx-hash, fleet/missions non-empty).
+
+**Spec check:** STEP 0's stopping condition — *"the codebase builds clean and existing tests pass"* —
+is **met and exceeded** (builds clean, 128 tests pass, all four probes pass). The three defects found
+were all outside the reach of the four gates, which is the whole argument for the probe layer.
+
+**Scope honesty:** one item is **explicitly NOT claimed**. `probe_api`'s *first* run in this session
+had to be executed as a background task because the probe's own `kill_server()` PowerShell step
+(`Stop-Process -Force` on the `:8000` listener) terminates the calling shell in this sandbox — the
+same class of environment artefact as the documented `rm` block, **not a code defect**. The probe's
+result is unaffected (69/69, exit 0). Recorded so the next session does not re-diagnose it.
+
+**Score (1–5):** Correctness **5** (every fix proved discriminating by reverting or by live
+measurement) · Verification independence **5** (found by running the harnesses, not by reading the
+diff — the diff looked correct) · Scope honesty **5** (the increment's unknown provenance is stated
+plainly rather than absorbed silently).
+
+## [OVERVIEW:team-lead] NORTH STAR CHECK — entry #0
+
+```
+NORTH STAR CHECK
+Status: on track
+Reasoning: The increment strengthens three of the six bullets rather than pulling away from any —
+  bullet 5 (every operational record anchored on-chain) is directly served by SEED_DRONES/
+  SEED_MISSIONS + the S113 tx-hash stamping in submit_tx; bullet 4 (2D is the landing page for
+  BOTH roles) is intact — verified live at 1440/1024/768/320 with the operator console still
+  defaulting to the map, and the seven new sidebar entries are additive, not a replacement.
+  Bullet 2 (tamper-evidence real) is untouched and still green (69/69 api probe, incl. the
+  forgery vectors and FR-B6 409).
+Action: none — clear STEP 0. STEP 2 (backend/technical first) may begin.
+```
+

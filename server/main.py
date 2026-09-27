@@ -442,14 +442,118 @@ SEED_APPROVALS = {
 }
 
 
+def _drone(
+    drone_id: str,
+    callsign: str,
+    operator_id: str,
+    lat: float,
+    lng: float,
+    altitude_m: int,
+    status: str,
+    battery_pct: int,
+    mission_id: str,
+    heading_deg: int,
+    speed_kph: int,
+    last_seen_iso: str,
+) -> dict[str, Any]:
+    """Builds a seed drone row matching the frontend `Drone` shape (PRD S114)."""
+    return {
+        "id": drone_id,
+        "callsign": callsign,
+        "operatorId": operator_id,
+        "position": {"lat": lat, "lng": lng},
+        "altitudeM": altitude_m,
+        "status": status,
+        "batteryPct": battery_pct,
+        "missionId": mission_id,
+        "headingDeg": heading_deg,
+        "speedKph": speed_kph,
+        "lastSeenIso": last_seen_iso,
+    }
+
+
+def _mission(
+    mission_id: str,
+    name: str,
+    operator: str,
+    route: list[dict[str, float]],
+    status: str,
+    risk_level: str,
+    altitude_window_m: list[int],
+    eta_iso: str,
+) -> dict[str, Any]:
+    """Builds a seed mission row matching the frontend `Mission` shape (PRD S112)."""
+    return {
+        "id": mission_id,
+        "name": name,
+        "operator": operator,
+        "route": route,
+        "status": status,
+        "riskLevel": risk_level,
+        "altitudeWindowM": altitude_window_m,
+        "etaIso": eta_iso,
+    }
+
+
+#: Seeded drone roster. The north star (item 5) requires `/api/fleet` to return
+#: real rows rather than an empty array beside a populated mock UI, so the seed
+#: mirrors the frontend's own fleet — same ids, operator ids and callsigns — and
+#: is written into `State.drones` by `seed_if_empty()`.
+SEED_DRONES = [
+    _drone("drone-hk-01", "BSN-01", "wallet-harbour", 22.303, 114.171, 118, "nominal", 82, "mission-vh-12", 82, 42, "2026-09-24T13:35:00.000Z"),
+    _drone("drone-hk-02", "BSN-07", "wallet-urban", 22.281, 114.158, 92, "warning", 35, "mission-cbd-04", 248, 34, "2026-09-24T13:34:40.000Z"),
+    _drone("drone-hk-03", "BSN-11", "wallet-cargo", 22.337, 114.201, 142, "nominal", 68, "mission-kt-19", 32, 39, "2026-09-24T13:34:55.000Z"),
+    _drone("drone-hk-04", "BSN-15", "wallet-harbour", 22.318, 114.134, 0, "grounded", 91, "mission-standby", 0, 0, "2026-09-24T13:30:00.000Z"),
+]
+
+#: Seeded mission list. Mirrors the frontend mock missions so `/api/missions`
+#: returns the same plans the operator console renders.
+SEED_MISSIONS = [
+    _mission(
+        "mission-vh-12",
+        "Victoria Harbour inspection",
+        "Harbour Ops Desk",
+        [{"lat": 22.299, "lng": 114.145}, {"lat": 22.303, "lng": 114.171}, {"lat": 22.309, "lng": 114.197}],
+        "active",
+        "medium",
+        [90, 130],
+        "2026-09-24T14:05:00.000Z",
+    ),
+    _mission(
+        "mission-cbd-04",
+        "Central district façade survey",
+        "Urban Scan Team",
+        [{"lat": 22.274, "lng": 114.139}, {"lat": 22.281, "lng": 114.158}, {"lat": 22.287, "lng": 114.176}],
+        "paused",
+        "high",
+        [70, 110],
+        "2026-09-24T14:22:00.000Z",
+    ),
+    _mission(
+        "mission-kt-19",
+        "Kowloon East logistics corridor",
+        "Cargo Pilot Cell",
+        [{"lat": 22.319, "lng": 114.178}, {"lat": 22.337, "lng": 114.201}, {"lat": 22.356, "lng": 114.217}],
+        "active",
+        "low",
+        [120, 160],
+        "2026-09-24T13:58:00.000Z",
+    ),
+]
+
+
 def seed_if_empty(state: State) -> None:
     # Never seed over a file we could not read: that would overwrite the evidence of
     # tampering (self-healing hides an attack). A genuinely blank or missing file has
-    # `load_error is None`, so it still seeds.
+    # `load_error is None`, so it still seeds. Idempotence is unchanged: the guard is
+    # still `not blocks and not wallets`, and the drone/mission tables are seeded
+    # inside the same single block, so an already-seeded file is never re-seeded.
     if state.load_error is None and not state.blocks and not state.wallets:
         state.wallets = SEED_WALLETS
         state.auctions = SEED_AUCTIONS
         state.approvals = SEED_APPROVALS
+        state.drones = SEED_DRONES
+        state.missions = SEED_MISSIONS
         append_block(state, [{"type": "GENESIS", "note": "BUSTARON M3 chain seeded"}])
         save_state(state)
 
@@ -575,6 +679,8 @@ def submit_tx(tx: Tx) -> dict[str, Any]:
             # no block is appended (height unchanged) and no business state is written.
             _record_tamper_event(state, fault, tx.type)
             raise ChainIntegrityError(fault)
+        # Rows appended from this index on belong to this transaction (PRD S113).
+        ledger_len_before = len(state.credit_ledger)
         if tx.type == "AUCTION_BID":
             result = apply_bid(state, BidPayload(**tx.payload))
         elif tx.type == "AUCTION_AWARD":
@@ -605,6 +711,12 @@ def submit_tx(tx: Tx) -> dict[str, Any]:
                 status_code=500,
                 detail="Server invariant violation: appended block failed the 3-of-3 authority quorum",
             )
+        # PRD S113: every ledger row this transaction appended is anchored by the
+        # block that carries it, so stamp the block hash onto those rows. This is
+        # what makes the wallet's tx hashes genuinely on-chain rather than a local
+        # content hash. Rows from earlier blocks are untouched.
+        for ledger_row in state.credit_ledger[ledger_len_before:]:
+            ledger_row["txHash"] = block.hash
         save_state(state)
         return {
             "ok": True,

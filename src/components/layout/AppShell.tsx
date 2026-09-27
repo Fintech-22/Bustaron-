@@ -3,8 +3,13 @@ import { EmptyState } from '../common/EmptyState';
 import { MetricCard } from '../common/MetricCard';
 import { MapHost } from '../map/MapHost';
 import { AdminPanel } from '../panels/AdminPanel';
+import { AlertsPanel } from '../panels/AlertsPanel';
+import { AnalyticsPanel } from '../panels/AnalyticsPanel';
 import { ApprovalsQueuePanel } from '../panels/ApprovalsQueuePanel';
 import { CreditWalletPanel } from '../panels/CreditWalletPanel';
+import { EsgScorecardPanel } from '../panels/EsgScorecardPanel';
+import { FleetPanel } from '../panels/FleetPanel';
+import { FlightPlansPanel } from '../panels/FlightPlansPanel';
 import { MissionPanel } from '../panels/MissionPanel';
 import { StatusPanel } from '../panels/StatusPanel';
 import { useDashboardStore } from '../../store/dashboardStore';
@@ -27,8 +32,8 @@ export function AppShell(): JSX.Element {
   const activeSection = useDashboardStore((state) => state.activeSection);
   const drones = useDashboardStore((state) => state.drones);
   const wallets = useDashboardStore((state) => state.wallets);
-  const weatherAlerts = useDashboardStore((state) => state.weatherAlerts);
   const approvalRequests = useDashboardStore((state) => state.approvalRequests);
+  const alerts = useDashboardStore((state) => state.alerts);
   const lastUpdatedIso = useDashboardStore((state) => state.lastUpdatedIso);
   const emergencyMode = useDashboardStore((state) => state.emergencyMode);
   const setRole = useDashboardStore((state) => state.setRole);
@@ -53,11 +58,12 @@ export function AppShell(): JSX.Element {
   // checked against the spec literally rather than "close enough".
   const totalCredits = wallets.reduce((total, wallet) => total + wallet.balanceCredits + wallet.reservedCredits, 0);
   const pendingApprovals = approvalRequests.filter((request) => request.status === 'pending').length;
+  const pendingAlerts = alerts.filter((alert) => !alert.acknowledged).length;
   const operatorMetrics = [
     { label: 'Active Drones', value: `${activeDrones}/${drones.length}`, trend: 'Fleet in controlled airspace', tone: 'good' as const, icon: 'AIR' },
     { label: 'Credits Balance', value: `${totalCredits}`, trend: `${wallets.length} operator wallets`, tone: 'neutral' as const, icon: 'CRD' },
     { label: 'ESG Score', value: esgScore, trend: 'Fleet-weighted multiplier 1.15×', tone: 'good' as const, icon: 'ESG' },
-    { label: 'Pending Alerts', value: `${weatherAlerts.length + warningDrones}`, trend: 'Weather + aircraft watch', tone: warningDrones > 0 ? 'warning' as const : 'good' as const, icon: 'ALR' },
+    { label: 'Pending Alerts', value: `${pendingAlerts}`, trend: 'Weather + aircraft watch', tone: pendingAlerts > 0 ? 'warning' as const : 'good' as const, icon: 'ALR' },
   ];
   const adminMetrics = [
     { label: 'Active Drones', value: `${activeDrones}/${drones.length}`, trend: 'System-wide fleet', tone: 'good' as const, icon: 'AIR' },
@@ -94,8 +100,12 @@ export function AppShell(): JSX.Element {
               ))}
             </div>
             {activeSection === 'operations' && <MapHost />}
-            {activeSection === 'missions' && <MissionPanel expanded />}
+            {activeSection === 'missions' && <FlightPlansPanel />}
             {activeSection === 'wallet' && <CreditWalletPanel />}
+            {activeSection === 'esg' && <EsgScorecardPanel />}
+            {activeSection === 'fleet' && <FleetPanel />}
+            {activeSection === 'analytics' && <AnalyticsPanel />}
+            {activeSection === 'alerts' && <AlertsPanel />}
             {activeSection === 'approvals' && activeRole === 'admin' && <ApprovalsQueuePanel expanded />}
             {activeSection === 'admin' && activeRole === 'admin' && <AdminPanel expanded />}
             {(activeSection === 'admin' || activeSection === 'approvals') && activeRole !== 'admin' && (

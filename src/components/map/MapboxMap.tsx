@@ -6,6 +6,7 @@ import {
   dronesToGeoJson,
   missionsToGeoJson,
   plannedRouteToGeoJson,
+  weatherArrowsToGeoJson,
   weatherToGeoJson,
   zonesToGeoJson,
 } from '../../services/zoneGeoJson';
@@ -23,6 +24,7 @@ const SOURCE = {
   cells: 'skycells',
   zones: 'rfz-zones',
   weather: 'weather',
+  weatherArrows: 'weather-arrows',
   missions: 'missions',
   planned: 'planned-route',
   drones: 'drones',
@@ -32,9 +34,11 @@ const LAYER = {
   cellFill: 'skycell-fill',
   cellLine: 'skycell-line',
   zoneFill: 'rfz-fill',
+  zoneHatch: 'rfz-hatch-fill',
   zoneLine: 'rfz-line',
   weatherFill: 'weather-fill',
   weatherLine: 'weather-line',
+  weatherArrow: 'weather-arrow',
   missionLine: 'mission-line',
   plannedLine: 'planned-line',
   droneArrow: 'drone-arrow',
@@ -71,15 +75,37 @@ function makeArrowImage(size = 64): { width: number; height: number; data: Uint8
   return { width: size, height: size, data };
 }
 
+/**
+ * Renders the restricted-zone diagonal hatch as an SDF-free RGBA tile for
+ * Mapbox `fill-pattern` (PRD FR-OP-V3 / S106). 45° red stripes over a faint red
+ * wash so a hatched zone still reads as a zone at low zoom.
+ */
+function makeHatchImage(size = 16): { width: number; height: number; data: Uint8ClampedArray } {
+  const data = new Uint8ClampedArray(size * size * 4);
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const offset = (y * size + x) * 4;
+      const onStripe = (x + y) % 6 < 2;
+      data[offset] = 251;
+      data[offset + 1] = 113;
+      data[offset + 2] = 133;
+      data[offset + 3] = onStripe ? 235 : 45;
+    }
+  }
+  return { width: size, height: size, data };
+}
+
 function buildOverlay(map: MapboxMapInstance): void {
   // Verification hook: lets headless/live tooling assert rendered overlay
   // features (queryRenderedFeatures) without touching React internals.
   (window as unknown as { __bustaronMap?: MapboxMapInstance }).__bustaronMap = map;
   map.addImage('bustaron-arrow', makeArrowImage(), { pixelRatio: 2 });
+  map.addImage('rfz-hatch', makeHatchImage(), { pixelRatio: 1 });
 
   map.addSource(SOURCE.cells, { type: 'geojson', data: skycellsToGeoJson([]) });
   map.addSource(SOURCE.zones, { type: 'geojson', data: zonesToGeoJson([]) });
   map.addSource(SOURCE.weather, { type: 'geojson', data: weatherToGeoJson([]) });
+  map.addSource(SOURCE.weatherArrows, { type: 'geojson', data: weatherArrowsToGeoJson([]) });
   map.addSource(SOURCE.missions, { type: 'geojson', data: missionsToGeoJson([]) });
   map.addSource(SOURCE.planned, { type: 'geojson', data: plannedRouteToGeoJson(null) });
   map.addSource(SOURCE.drones, { type: 'geojson', data: dronesToGeoJson([], '') });
@@ -109,6 +135,24 @@ function buildOverlay(map: MapboxMapInstance): void {
       'fill-opacity': ['match', ['get', 'kind'], 'corridor', 0.08, 'heliport', 0.1, 'sandbox', 0.14, 0.18],
     },
   });
+  // PRD FR-OP-V3 / S106: restricted (RFZ) zones get the red diagonal hatch on
+  // top of the translucent fill; sandbox zones keep the amber outline from
+  // `zoneLine`'s kind expression.
+  //
+  // NOTE — no `beforeId` here on purpose. `Map#addLayer(layer, beforeId)` only
+  // accepts an id that ALREADY exists: given an unknown one it fires
+  // `Layer with id "..." does not exist on this map.` and returns without adding
+  // the layer. Anchoring this to `zoneLine` (which is added a few lines below)
+  // therefore dropped the hatch silently and logged an error on every style
+  // load. Stacking here comes from insertion order instead, which already yields
+  // the intended fill → hatch → line.
+  map.addLayer({
+    id: LAYER.zoneHatch,
+    type: 'fill',
+    source: SOURCE.zones,
+    filter: ['==', ['get', 'kind'], 'rfz'],
+    paint: { 'fill-pattern': 'rfz-hatch', 'fill-opacity': 0.9 },
+  });
   map.addLayer({
     id: LAYER.zoneLine,
     type: 'line',
@@ -130,6 +174,23 @@ function buildOverlay(map: MapboxMapInstance): void {
     type: 'line',
     source: SOURCE.weather,
     paint: { 'line-color': '#fbbf24', 'line-width': 1, 'line-opacity': 0.7 },
+  });
+  // PRD FR-OP-V5 / S108: one wind arrow per weather cell, rotated to the
+  // forecast bearing. Same `beforeId` caveat as the RFZ hatch above — the anchor
+  // (`missionLine`) is added below, so stacking relies on insertion order:
+  // weather fill → weather line → wind arrows → mission lines.
+  map.addLayer({
+    id: LAYER.weatherArrow,
+    type: 'symbol',
+    source: SOURCE.weatherArrows,
+    layout: {
+      'icon-image': 'bustaron-arrow',
+      'icon-size': 0.5,
+      'icon-rotate': ['get', 'windDirectionDeg'],
+      'icon-rotation-alignment': 'map',
+      'icon-allow-overlap': true,
+    },
+    paint: { 'icon-color': ['match', ['get', 'severity'], 'high', '#fb7185', 'critical', '#ef4444', '#fbbf24'] },
   });
 
   map.addLayer({
@@ -214,6 +275,7 @@ function pushAll(map: MapboxMapInstance): void {
     [SOURCE.cells, skycellsToGeoJson(buildSkycells(state.drones, state.missions))],
     [SOURCE.zones, zonesToGeoJson(state.zones)],
     [SOURCE.weather, weatherToGeoJson(state.weatherAlerts)],
+    [SOURCE.weatherArrows, weatherArrowsToGeoJson(state.weatherAlerts)],
     [SOURCE.missions, missionsToGeoJson(state.missions)],
     [SOURCE.planned, plannedRouteToGeoJson(state.activeLayers.routes ? state.plannedRoute : null)],
     [SOURCE.drones, dronesToGeoJson(visibleDrones, state.selectedDroneId)],
@@ -225,9 +287,11 @@ function pushAll(map: MapboxMapInstance): void {
     [LAYER.cellFill, state.activeLayers.grid],
     [LAYER.cellLine, state.activeLayers.grid],
     [LAYER.zoneFill, state.activeLayers.restrictedZones],
+    [LAYER.zoneHatch, state.activeLayers.restrictedZones],
     [LAYER.zoneLine, state.activeLayers.restrictedZones],
     [LAYER.weatherFill, state.activeLayers.weather],
     [LAYER.weatherLine, state.activeLayers.weather],
+    [LAYER.weatherArrow, state.activeLayers.weather],
     [LAYER.missionLine, state.activeLayers.routes],
     [LAYER.droneArrow, state.activeLayers.drones],
     [LAYER.droneDot, state.activeLayers.drones],
