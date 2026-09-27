@@ -1980,3 +1980,144 @@ from the on-disk state and drove everything to green. Verified at commit time.
 - The weather tab polls every 60 s (display freshness); the SERVER cache TTL remains 5 min
   (S35) — the client does not bypass the server's poller.
 ```
+
+
+---
+
+# ══ ORCHESTRATION RUN 4 — STEP 0 RE-VERIFY, THEN S91: THE PYTEST SUITE ══
+
+> Continued from run 3 (`aa6d51d`). Mandate: resume the remaining items in priority order,
+> flag anything blocked, and do not trust a status report without running it.
+
+## [OVERVIEW] STEP 0 — re-established the baseline by RUNNING it (2026-09-27)
+
+HEAD on arrival was **`519a470` (T12)**, two commits past where this agent's own record ended
+(`aa6d51d`). `server/agents.py` — a 976-line module this agent never wrote — was present and
+**tracked**, committed by `a42cb73` ("M3 B4: §8 negotiation engine reviewed, wired and
+anchored on-chain"). Rather than trust either commit message, the baseline was measured:
+
+- Gates: `tsc -b` 0 · `eslint . --max-warnings=0` 0 · `vitest run` **141/141 (23 files)** —
+  T12's claims confirmed.
+- `ruff check server scripts` **0 errors** (the 15 recorded in run 3 are gone).
+- `pytest 9.1.1` installed, and **no pytest suite existed anywhere** — no `tests/`, no `test/`.
+
+**Blocker flagged (not worked around silently): the account hit a hard credit limit mid-run
+(`429 Credits exhausted`) when the Worker sub-agent was spawned.** The sub-agent was created and
+died before producing anything; the hierarchy could not be used for this task. Recorded plainly
+because it changes what the evidence below is worth: **there was no independent Reviewer for
+this increment.** The compensating control applied instead was the discrimination experiment
+(§Verification), which is a stronger check on the *tests* than a second reader is, though it is
+not a substitute for independent review of the *production* code — none of which changed here.
+
+## [SUPERVISOR] Task selection — why S91 next
+
+Run 3's own close-out named the two largest untouched non-M4 gaps: **S91 (pytest suite)** and
+the 3D tab. The 3D tab was delivered in T12. So S91 is the largest remaining unblocked item, and
+it is pure addition — it cannot destabilise a verified revision. Priority confirmed against
+`docs/milestone-03.md` §Remaining.
+
+## [WORKER] S91 — the pytest suite (131 tests)
+
+**`tests/` — four modules + two shared helpers, 131 tests, 6.6 s.**
+
+| Module | Tests | Covers |
+|---|---|---|
+| `test_agents_engine.py` | 54 | FR-N1..N8 at the level of `server/agents.py` alone |
+| `test_chain_integrity.py` | 43 | FR-B4/B5/B6: hashing, linkage, quorum, tamper, state file |
+| `test_api_contracts.py` | 34 | every HTTP endpoint, status codes and error contracts |
+
+Plus `tests/conftest.py` (isolation), `tests/helpers.py` (factories), `pytest.ini`,
+`requirements-dev.txt`.
+
+**Isolation is the load-bearing design decision.** `server/main.py` derives `DATA_DIR` /
+`STATE_PATH` from `BUSTARON_DATA_DIR` **at import time**, so `conftest.py` sets that variable
+*before* importing the app, and drives the API in-process through `TestClient` — **no port is
+bound**, so the suite cannot race `server/probe_api.py` for `:8000` or `server/data/state.json`.
+
+**Two real findings the suite surfaced while being written** (both are documentation defects in
+the harness, not product defects):
+
+1. **Seeding is IMPORT-TIME only.** Blanking `state.json` to `{}` and then calling a *read*
+   endpoint does **not** re-seed — only `submit_tx` and `POST /negotiate` call `seed_if_empty`,
+   plus the module-level call at import. The first version of the `client` fixture blanked the
+   file and every seeded-table assertion failed with empty state. `probe_api.py` escapes this
+   only because it **restarts the server** after blanking (`kill_server` → `reset_state_file` →
+   `start_server`), which re-runs the import. The fixture now rebuilds the seed explicitly.
+   *This is a genuinely non-obvious property of the codebase and is now documented in the
+   fixture, where the next person will hit it.*
+2. **`TestClient` cannot consume `/events`.** Reading the SSE stream in-process **deadlocks the
+   entire test session** (measured — the run hung until an external timeout killed it), because
+   the portal cannot cancel an infinite async generator. The suite therefore asserts only that
+   the route is registered, and delegates the stream's wire semantics to `server/probe_api.py`,
+   which covers them over a real socket with 25 assertions including the acid test. Asserted
+   deliberately rather than left as an unexplained absence.
+
+## [REVIEWER] — DISCRIMINATION EXPERIMENT (the compensating control for the lost reviewer)
+
+A green suite is not evidence until it has been watched going red. Two mechanisms were broken in
+`server/agents.py`, deliberately chosen as **the exact defects run 3 had to fix**:
+
+| Mutation | Intent | Result |
+|---|---|---|
+| `yield_direction` → always `1.0` | restore the pre-B4 defect: climb even when BELOW the peer, reducing separation | **2 failures** — `test_yield_direction_descends_when_below_the_peer`, `test_altitude_yield_increases_separation_when_below_the_peer` |
+| `conflict_id_for` salted with `time_ns()` | break FR-N2 determinism | **4 failures** — the three determinism tests + `test_detection_canonicalises_drone_a_as_the_lower_id` |
+| (consequence of the above) | — | **1 failure** — `test_deterministic_negotiator_is_reproducible` |
+
+**7 failed / 124 passed, exit 1.** Restored with `cp` from a byte-exact backup: md5
+**`71c1b2166ef5af6d8507fe718bbece27`** — which also **matches the md5 recorded in run 3's B4
+review**, independently confirming the frozen revision is the reviewed one. `git status
+server/` clean, 0 mutation markers remaining, **131 passed** again.
+
+## [SUPERVISOR] VERDICT — PASS
+
+| Gate / probe | Result |
+|---|---|
+| `pytest` (bare, repo root) | **131 passed, 6.6 s** — S91 wants >= 60 |
+| `tsc -b` · `eslint . --max-warnings=0` | 0 · 0 |
+| `vitest run` | **141/141 (23 files)** |
+| `ruff check server scripts tests` | **0 errors** |
+| `probe_agents.py` · `probe_lifecycle.ts` · `probe_routes.ts` | ALL PASS · ALL PASS · 42/42 |
+| `probe_api.py` (official, sole runner) | see §Verification below |
+| Discrimination | **7 failed / 124 passed** with 2 mechanisms broken; restored byte-exact |
+
+**S91 status: MET in the sense the criterion asks for** — "all automated tests (pytest) pass,
+minimum 60 tests covering chain, agents, negotiation state machine, tamper detection, API
+endpoints". 131 tests, all green, and each of those five named areas has dedicated coverage.
+**NOT MET for three of its listed areas: equipment, maintenance, training, flight logs** — those
+features do not exist yet (M5). The suite cannot cover code that was never written, and claiming
+otherwise would be exactly the kind of overstatement this run's STEP 0 exists to catch.
+
+### Open finding recorded (not fixed — out of scope)
+
+`llm_config_from_env()` does `os.environ.get("BUSTARON_LLM_API_KEY") or None`, which does **not
+strip**. A whitespace-only key therefore counts as configured, so the LLM negotiator is
+attempted, fails auth, retries twice at `LLM_ATTEMPT_TIMEOUT_S` each, and only then falls back —
+burning up to 4 s of FR-N7's 5 s budget to reach the same deterministic answer. Bounded (it still
+never deadlocks, per FR-N8) but real. Pinned by
+`test_llm_config_characterises_a_whitespace_key_as_configured`, an explicit **characterization
+test** rather than a silent pass. One-line fix available:
+`(os.environ.get(...) or "").strip() or None` — the frontend already trims the analogous
+`VITE_MAPBOX_TOKEN`. Deliberately not applied here: `server/agents.py` is a separately reviewed
+artifact and changing its behaviour belongs in its own reviewed change.
+
+### Also recorded (minor, from writing the tests)
+
+§8.5's example spells the envelope fields `"from": "drone:A"`; the shipped engine writes the
+**bare id** (`"B"`). Self-consistent — the chain replay groups by `conflict_id`, not by these
+fields — so this is an example/implementation divergence, not a defect. Pinned in the test that
+would otherwise have asserted the example literally.
+
+## [OVERVIEW:team-lead] NORTH STAR CHECK — S91
+
+```
+NORTH STAR CHECK
+Status: on track
+Reasoning: S91 is pure addition — test code only, no production file touched, so no north-star
+  bullet can regress and the verified B4/T12 revisions are untouched (md5-confirmed). It serves
+  bullet 2 indirectly and importantly: the tamper-detection and quorum behaviour that bullet 2
+  depends on is now covered by an in-process suite that runs in 6.6 s, so a future change that
+  weakens detection is caught without needing the slow, :8000-owning behavioural probe.
+  Bullet 6 (E2E demo clean x3) gains a fast pre-flight gate.
+Action: none. S91 closed. The named-but-uncovered M5 areas are recorded as an explicit gap, not
+  papered over.
+```

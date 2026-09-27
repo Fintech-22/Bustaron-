@@ -1,0 +1,17 @@
+# BUSTARON — development / test dependencies (PRD S91).
+#
+#   python -m pip install -r requirements-dev.txt
+#
+# Kept SEPARATE from requirements.txt on purpose: the runtime image needs only fastapi,
+# uvicorn, cryptography and pydantic. Pulling a test runner and an HTTP client into the
+# server's own dependency set would widen the deployed attack surface and the image for no
+# runtime benefit.
+#
+# Why each is here:
+#   pytest  — the S91 suite under tests/ (>= 60 tests covering chain, agents, negotiation,
+#             tamper detection and the API surface).
+#   httpx   — required by fastapi.testclient.TestClient, which drives the API in-process so
+#             the suite never binds a port and therefore never races server/probe_api.py
+#             for :8000 or server/data/state.json.
+pytest==9.1.1
+httpx==0.28.1
