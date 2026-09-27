@@ -1711,3 +1711,126 @@ Reasoning: The increment strengthens three of the six bullets rather than pullin
 Action: none — clear STEP 0. STEP 2 (backend/technical first) may begin.
 ```
 
+---
+
+# ══ ORCHESTRATION RUN 2 — STEP 2, TASK B3: `GET /events` + machine-readable event type ══
+
+> Hierarchy exercised as specified: Overview (persistent) → Supervisor (1 per task) → Worker (1) +
+> **paired Reviewer running concurrently, not after**. Peer discussion in a shared thread
+> (`.workbuddy-ai/b3/thread.md`). Round 1 was **REJECTED**; round 2 **PASSED**.
+
+## [OVERVIEW:team-lead] Task selection — why B3 first
+
+The audit held **S4 at PARTIAL** for exactly one reason, quoted from the acceptance record:
+*"`GET /events` (S6) is unimplemented and the durable record carries no machine-readable event type,
+so `TAMPER_DETECTED` is selectable only by string-matching prose. A log line is not a delivery
+surface."* That is **north-star bullet 2** — the only bullet of the six currently held below MET.
+Highest value per unit of work, and backend/technical, so it precedes UI work per STEP 2.
+
+## [WORKER:b3] ROUND 1 — delivered, then REJECTED on evidence
+
+`_chain_fault()` returns a `ChainFault` (`code` + `height` + prose) instead of a bare string, so the
+single detection point emits a stable token (`STATE_FILE_UNREADABLE` / `BLOCK_LINK_BROKEN` /
+`BLOCK_HASH_MISMATCH` / `QUORUM_INVALID`). Durable records became
+`{id, type:"TAMPER_DETECTED", atMs, source, faultCode, height, fault}`. Legacy `{atMs,source,fault}`
+records are upgraded **on read** by `_event_envelope()` — the evidence file is never rewritten merely
+to become readable. `GET /events` is a `StreamingResponse(text/event-stream)` over an async generator
+that replays durable history then streams live; fan-out goes through `EventBroker`, which crosses
+from the sync `submit_tx` threadpool into the loop via `loop.call_soon_threadsafe` and is a guarded
+no-op when no loop is bound (the import-time path). No new dependencies. Probe 69 → 85 assertions.
+
+## [REVIEWER:b3] ROUND 1 — the catch that mattered
+
+The Reviewer derived failure modes from HEAD **before** any worker diff existed, verified the
+implementation end-to-end on a private port + private data dir (two concurrent clients both received
+the live event; no subscriber leak), and then found the defect that mattered: **the probe's "live"
+assertion was a proven false green.** It read only 1 frame at connect while the replay buffer held the
+entire durable history, so a *buffered replay frame* satisfied the live check. Proof: with
+`EventBroker.publish()` replaced by an early `return`, the official probe still printed
+`ALL CHECKS PASSED` — including all three live assertions.
+
+## [SUPERVISOR:b3] ROUND 1 — VERDICT: REJECT (evidence, not implementation)
+
+I did not rubber-stamp the Reviewer. **I reproduced its top concern myself**: with live delivery
+disabled, the official probe still reported green. The implementation was good; **the evidence was
+worth nothing**, and S4 is a *detection* criterion — its entire content is "an event is produced and
+is observable". Shipping a delivery surface no test can tell is alive would have repeated the
+original mistake in a new place. Round-2 work order issued (must-fix 2, should-fix 2, defer 2), with
+the explicit requirement to **prove the fix discriminates**, and a process correction: the Worker
+had shipped without ever surfacing a plan.
+
+## [WORKER:b3] ROUND 2 — plan posted first, then the honest disclosure
+
+The Worker posted its plan to the thread **before** implementing, then reported — unprompted — that
+its **own first fix did not discriminate**: a `select()`-based drain left the probe green with
+publish dead, because a late subscriber's whole replay arrives in one TCP segment and Python's first
+`readline()` buffers it, leaving the kernel socket looking empty (a socket-timeout variant poisons
+the stream instead). The shipped boundary is therefore **exact, not timing-based**: the server emits
+an SSE comment frame (`: replay-complete`) that the probe drains to. Also fixed the probe-side
+flakiness root cause — `HTTPResponse.close()` often sends no FIN, so a subscriber was released only
+at the 15 s keep-alive.
+
+## [REVIEWER:b3] ROUND 2 — independent acid test on a private sandbox
+
+`:8231` + private `BUSTARON_DATA_DIR`; the official probe was never run on `:8000`. Publish dead →
+**exit 1, 7 CHECK(S) FAILED**. Fan-out broken (`_fanout` → `subscribers[:1]`) → **5 FAILs**. Drain
+removed + publish dead → the boundary assertions go red. Should-fixes verified by its own script.
+Residual concerns: the boundary assertion is **load-bearing** (do not relax); the release assertions
+looked flaky in earlier sandbox runs; freeze the revision.
+
+## [SUPERVISOR:b3] ROUND 2 — VERDICT: **PASS**
+
+Revision frozen and verified byte-exact before and after every experiment:
+`server/main.py` md5 **`d21079a3eb9ab658990cdb704eea5ae2`** (LF-only) ·
+`server/probe_api.py` md5 **`f3f55d2df5c439320eab8caa027a7488`**.
+
+Verified **by me, by running**, not from either report:
+
+| Check | Method | Result |
+|---|---|---|
+| Green baseline | official probe, `:8000`, sole runner | **92 PASS / 0 FAIL / EXIT=0** |
+| **ACID TEST** — live delivery dead | official probe, same runner | **6 FAILED / EXIT=1** — exactly the six live assertions; the other 19 S6 lines correctly still PASS |
+| Restore integrity | `cp` byte-exact backup + md5 | **md5 matches**, marker absent, 0 CR |
+| Idempotency | 3 consecutive runs, label sets diffed | **92 / 92 / 92, sets identical** |
+| Reviewer's flakiness concern | release assertions across 3 runs | **PASS 3/3** |
+| `tsc` · `eslint` · `vitest` | bun | **0 · 0 · 128/128 (21 files)** |
+| `probe_lifecycle` · `probe_routes` | bun | **ALL CHECKS PASSED** · **42/42** |
+| `probe_m3_seam` (live `:8000`, pristine) | bun | **7/7** — frontend↔backend contract intact |
+| **Real browser `EventSource`** — the gap BOTH agents flagged as unverified | Chrome/puppeteer, `:4173` → `:8000` | `onopen` fired, `err: null`; after a 409 the browser received the **live** event `{type:"TAMPER_DETECTED", faultCode:"BLOCK_HASH_MISMATCH", height:1, source:"AUCTION_BID"}` |
+
+### Scope rulings I own
+
+- **S4 = MET.** Both halves the acceptance record named as missing now exist and are *observable*: a
+  machine-readable `type` (+ stable `faultCode`), and a delivery surface that reaches a connected
+  client within one append cycle — demonstrated end-to-end **in a real browser**, not only from a
+  harness. **S6 = MET** on all three legs (`/chain`, `/block/{height}`, `/events`).
+- **Reviewer's flakiness concern → RESOLVED**, with the reasoning recorded: the Worker root-caused it
+  (no FIN → release waited for the 15 s keep-alive; `EventStream.close()` now shuts the socket down)
+  and 3/3 frozen-revision runs are green. **Honest limit:** three clean runs is not proof that
+  flakiness is absent — it is the absence of evidence for it on this revision plus a plausible fixed
+  cause.
+- **Reviewer's "boundary assertion is load-bearing" → ACCEPTED as a standing constraint.** It must
+  not be relaxed; recorded so a future tidy-up cannot silently remove it. Consequence: the production
+  stream now emits a probe-motivated comment frame — harmless per SSE spec (every client ignores `:`
+  lines), documented in `_sse_frame`.
+- **Deferred, recorded not buried:** the invisible `MAX_TAMPER_EVENTS=100` truncation marker, and the
+  blocking `load_state()` on the event loop inside `events()`.
+
+**Score (1–5):** Worker **5** (fixed what it was told to fix *and* disclosed unprompted that its own
+first fix failed — that disclosure is what made the round trustworthy). Reviewer **5** (round-1 catch
+was the round's whole value; round-2 acid test run independently on a private sandbox). Process **4**
+(round 1 shipped no plan; corrected in round 2 — the deduction stands for round 1).
+
+## [OVERVIEW:team-lead] NORTH STAR CHECK — B3
+
+```
+NORTH STAR CHECK
+Status: on track
+Reasoning: Bullet 2 was the only north-star bullet held below MET; it is now MET and demonstrated in
+  a real browser. Bullet 3 is respected — /events is a read-only observer, the broker never gates a
+  write, appends still go only through POST /chain/tx under the 3-of-3 quorum. Bullet 6 gained its
+  first genuinely observable detection surface.
+Action: none. B3 closed PASS; the backend queue may advance.
+```
+
+

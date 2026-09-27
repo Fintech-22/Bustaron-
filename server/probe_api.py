@@ -10,8 +10,10 @@ seed balances. Run it as many times as you like — the result is the same.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
+import socket
 import subprocess
 import sys
 import time
@@ -41,6 +43,11 @@ from server.authorities import verify_quorum  # noqa: E402  (needs the sys.path 
 
 BASE = "http://127.0.0.1:8000"
 STATE_PATH = Path(__file__).resolve().parent / "data" / "state.json"
+
+#: SSE comment frame the server emits once the durable replay is finished (server/main.py,
+#: `REPLAY_COMPLETE_MARKER`). It is the probe's exact live boundary: before it, frames may be
+#: replay bytes buffered on the socket; after it, every frame was produced live.
+REPLAY_COMPLETE_MARKER = "replay-complete"
 
 failures = 0
 
@@ -81,6 +88,139 @@ def _powershell(command: str) -> subprocess.CompletedProcess[str]:
         text=True,
         timeout=30,
     )
+
+
+class EventStream:
+    """Minimal Server-Sent Events client for `GET /events` (PRD S6 / FR-B8).
+
+    `get()` cannot be used here: it reads the response to EOF, which never happens on a
+    stream that is supposed to stay open — it would block until the socket timed out. This
+    reads frames incrementally off an OPEN connection, so a check can observe an event that
+    arrives AFTER the connect. That is exactly what separates a real stream from a
+    one-shot JSON array that happens to carry the right bytes.
+    """
+
+    def __init__(self, path: str = "/events", timeout: float = 10.0, last_event_id: str | None = None) -> None:
+        self.timeout = timeout
+        headers = {"Accept": "text/event-stream"}
+        if last_event_id is not None:
+            # What a reconnecting EventSource sends back automatically.
+            headers["Last-Event-ID"] = last_event_id
+        self.response = urllib.request.urlopen(
+            urllib.request.Request(f"{BASE}{path}", headers=headers),
+            timeout=timeout,
+        )
+        self.content_type = self.response.headers.get("Content-Type", "")
+        # A buffered/one-shot response always carries a length; a live stream cannot.
+        self.content_length = self.response.headers.get("Content-Length")
+        self.transfer_encoding = self.response.headers.get("Transfer-Encoding")
+        self.frames: list[dict[str, Any]] = []
+        #: The SSE `id:` field of each parsed frame, positionally aligned with `frames`.
+        self.frame_ids: list[str] = []
+        #: True once the server's end-of-replay comment marker has been seen. Until then,
+        #: "the next frame" may still be REPLAY bytes sitting in the socket buffer.
+        self.replay_complete = False
+        self._pending: dict[str, str] = {}
+
+    def _consume_line(self, text: str) -> None:
+        """Applies one SSE line to the parser state: a frame, the replay marker, or a field."""
+        if text == "":
+            if "data" in self._pending:
+                self.frames.append(json.loads(self._pending["data"]))
+                self.frame_ids.append(self._pending.get("id", ""))
+            self._pending = {}
+        elif text.startswith(":"):
+            if text[1:].strip() == REPLAY_COMPLETE_MARKER:
+                self.replay_complete = True
+        else:
+            # "id: X" / "data: {...}" — a comment frame (keep-alive) is handled above.
+            field, _, value = text.partition(":")
+            self._pending[field.strip()] = value.strip()
+
+    def _read_line(self, deadline_s: float) -> str | None:
+        """One line off the wire, or None on EOF / deadline / a blocked read past the timeout."""
+        end = time.time() + deadline_s
+        while time.time() < end:
+            try:
+                line = self.response.readline()
+            except TimeoutError:  # a blocked read past the socket timeout; `socket.timeout` is this type
+                return None
+            if not line:
+                return None
+            return line.decode("utf-8").rstrip("\r\n")
+        return None
+
+    def read_frames(self, count: int, deadline_s: float = 8.0) -> None:
+        """Reads until `count` complete frames are parsed, or the deadline passes.
+
+        A blocked read is bounded by the socket timeout, so a stream that never produces
+        the next frame surfaces as a FAIL rather than hanging the probe forever.
+        """
+        end = time.time() + deadline_s
+        while len(self.frames) < count and time.time() < end:
+            line = self._read_line(end - time.time())
+            if line is None:
+                return
+            self._consume_line(line)
+
+    def drain(self, deadline_s: float = 8.0) -> None:
+        """Reads until the server's end-of-replay marker — the exact live boundary.
+
+        This is what makes a "live" assertion mean anything. `GET /events` pushes the whole
+        durable log into the socket on connect, so a probe that reads exactly one frame and
+        then calls the NEXT frame "live" is reading buffered REPLAY bytes: with live delivery
+        completely dead it still passes (measured — the whole probe reported ALL CHECKS
+        PASSED against a `publish()` that returned immediately).
+
+        Quiescence is detected by the server's marker frame, NOT by a quiet window. Two
+        timing-based versions were tried and both failed, which is why the marker exists:
+
+        * `select()` on the socket is blind to bytes Python has already pulled off it. A late
+          subscriber's entire replay arrives in one segment, the first `readline()` buffers
+          all of it, and the kernel socket then looks empty — so a readiness check declares
+          "quiet" with two replay frames still queued in user space. Reproduced: drain
+          returned after 1 of 3 frames and the "live" frame was `replay-1`.
+        * a short socket timeout makes the blocked read end the window, but it also poisons
+          the stream: every later read raises `OSError: cannot read from timed out object`
+          (`socket.SocketIO` refuses to read after its timeout fires), so the live read that
+          follows can never succeed.
+        """
+        end = time.time() + deadline_s
+        while not self.replay_complete and time.time() < end:
+            line = self._read_line(end - time.time())
+            if line is None:
+                return
+            self._consume_line(line)
+
+    def close(self) -> None:
+        """Closes the connection so the server actually SEES the disconnect.
+
+        `HTTPResponse.close()` alone is not enough: it closes the buffered file object, and
+        CPython only really closes the socket once the last reference to it is dropped, so
+        whether a FIN is ever sent depends on garbage collection. When no FIN is sent the
+        server keeps the subscriber until its next keep-alive write fails — up to
+        `EVENT_HEARTBEAT_S` (15 s). That made the "no leaked subscribers" checks flaky:
+        measured release latencies were 0.0 s in some rounds and 15.5 s in others, and an 8 s
+        deadline therefore failed intermittently for reasons that had nothing to do with the
+        broker. Shutting the socket down explicitly makes the disconnect immediate and the
+        leak checks deterministic.
+        """
+        sock = getattr(getattr(getattr(self.response, "fp", None), "raw", None), "_sock", None)
+        self.response.close()
+        if sock is not None:
+            with contextlib.suppress(OSError):
+                sock.shutdown(socket.SHUT_RDWR)
+            sock.close()
+
+
+def _wait_for_subscribers(count: int, deadline_s: float = 5.0) -> bool:
+    """Polls /api/health until the live /events subscriber count reaches `count`."""
+    end = time.time() + deadline_s
+    while time.time() < end:
+        if get("/api/health").get("eventSubscribers") == count:
+            return True
+        time.sleep(0.25)
+    return False
 
 
 def kill_server() -> None:
@@ -443,6 +583,16 @@ good_state = json.loads(STATE_PATH.read_text("utf-8"))
 if len(good_state["blocks"]) > 1:
     height_before_tamper = len(good_state["blocks"])
 
+    # B3 backward-compatibility fixture: ONE event in the PRE-B3 shape — no `type`, no
+    # `faultCode`, no `height`, just prose. It rides along in every tampered copy written
+    # below, so the SSE section can prove a client still receives a machine-readable type
+    # for records written before the event envelope existed. Deltas on `tamperEventCount`
+    # are measured against the live value, so this extra record shifts no existing check.
+    good_state.setdefault("tamper_events", []).insert(
+        0,
+        {"atMs": 1758700000000, "source": "AUCTION_BID", "fault": "block 1 hash does not match its contents"},
+    )
+
     # Precondition for vector 5. If the mutator failed to re-hash consistently, the forged
     # chain would be rejected for the WRONG reason (a broken hash chain) and the vector
     # would stop discriminating a quorum-enforcing verifier from a hash-only one. Prove the
@@ -517,6 +667,207 @@ if len(good_state["blocks"]) > 1:
         f"{events_before_refusal} -> {after_refusal.get('tamperEventCount')}",
     )
 
+    # ------------------- S6 / FR-B8: GET /events is a live SSE stream (B3) -----------
+    # The audit's finding, verbatim: "`GET /events` (S6) is unimplemented and the durable
+    # record carries no machine-readable event type, so `TAMPER_DETECTED` is selectable only
+    # by string-matching prose. A log line is not a delivery surface." Both halves are
+    # asserted here, against the SAME corrupt chain the loop above left serving — no extra
+    # server cycle. The stream must (a) carry an explicit `type`, (b) REPLAY durable history
+    # to a client that connects after the fact, and (c) push NEW events live, which is what
+    # makes S4's "within one append cycle" observable at all.
+    stream = EventStream()
+    check(
+        "S6: GET /events responds with an SSE content type",
+        stream.content_type.startswith("text/event-stream"),
+        stream.content_type,
+    )
+    # A one-shot JSON array would be buffered and would therefore carry a Content-Length.
+    # A genuine stream cannot know its length up front, so it is chunked instead.
+    check(
+        "S6: GET /events is a genuine stream, not a buffered one-shot array",
+        stream.content_length is None and (stream.transfer_encoding or "").lower() == "chunked",
+        f"content-length={stream.content_length!r} transfer-encoding={stream.transfer_encoding!r}",
+    )
+
+    # (b) Replay — a subscriber that connects AFTER the tamper must still learn about it.
+    stream.read_frames(1, deadline_s=6.0)
+    check(
+        "S6: /events REPLAYS durable history to a late subscriber",
+        len(stream.frames) >= 1,
+        f"{len(stream.frames)} frame(s) received on connect",
+    )
+    check(
+        "S6: every replayed event carries a machine-readable type",
+        bool(stream.frames)
+        and all(isinstance(frame.get("type"), str) and frame["type"] for frame in stream.frames),
+        json.dumps(stream.frames[:1]),
+    )
+    check(
+        "S6: TAMPER_DETECTED is one of the streamed event types (PRD §9.3)",
+        any(frame.get("type") == "TAMPER_DETECTED" for frame in stream.frames),
+        json.dumps(stream.frames[:1]),
+    )
+    check(
+        "S6: a replayed event is selectable WITHOUT string-matching prose (stable faultCode)",
+        bool(stream.frames)
+        and all(isinstance(frame.get("faultCode"), str) and frame["faultCode"] for frame in stream.frames),
+        json.dumps(stream.frames[:1]),
+    )
+    # `id:` is what a reconnecting EventSource echoes back in `Last-Event-ID`. The stream is
+    # AT-LEAST-ONCE, so the id is a dedup handle, not an exactly-once receipt: asserted for
+    # PRESENCE and for agreeing with the payload, never for "each id appears exactly once".
+    check(
+        "S6: every frame carries an SSE id: field matching its payload id (Last-Event-ID resume)",
+        bool(stream.frames)
+        and len(stream.frame_ids) == len(stream.frames)
+        and all(frame_id == frame.get("id") for frame_id, frame in zip(stream.frame_ids, stream.frames, strict=True)),
+        json.dumps(stream.frame_ids[:2]),
+    )
+    # The fixture injected into `good_state` was persisted in the pre-B3 shape
+    # ({"atMs","source","fault"} — no type, no code, no height), so this is the
+    # backward-compatibility assertion: OLD records must be upgraded on read, not merely
+    # new ones being written in the new shape. `height` and `faultCode` are backfilled from
+    # the prose, which is exactly what a legacy consumer cannot do for itself.
+    legacy_frames = [
+        frame
+        for frame in stream.frames
+        if frame.get("source") == "AUCTION_BID" and frame.get("fault") == "block 1 hash does not match its contents"
+    ]
+    check(
+        "S6: a pre-B3 event ({atMs,source,fault}) is upgraded on read with a type + faultCode",
+        bool(legacy_frames)
+        and legacy_frames[0].get("type") == "TAMPER_DETECTED"
+        and legacy_frames[0].get("faultCode") == "BLOCK_HASH_MISMATCH"
+        and legacy_frames[0].get("height") == 1,
+        json.dumps(stream.frames[:1]),
+    )
+
+    # (c) Live — an event produced AFTER the connect must arrive on the OPEN connection.
+    # This is the half that turns S4 from a pollable flag into an observable event.
+    #
+    # MUST-FIX (round 2): the replay is drained to its END MARKER *before* the snapshot.
+    # Reading one frame and calling the next one "live" is what made this probe pass with live
+    # delivery completely dead: the entire durable log is already buffered on the socket, so
+    # "the next frame" was replay. After a drain, `frames_at_connect` is a real boundary, and
+    # the assertion below additionally requires the new frame's `id` to be ABSENT from the
+    # replayed set — a frame that was in the replay is structurally unable to pass.
+    stream.drain(deadline_s=10.0)
+    replayed_ids = {frame.get("id") for frame in stream.frames}
+    frames_at_connect = len(stream.frames)
+    check(
+        "S6: the replay is drained to its end marker before any live assertion (exact boundary)",
+        stream.replay_complete and frames_at_connect >= 1,
+        f"marker={stream.replay_complete} frames={frames_at_connect}",
+    )
+
+    # The code the chain-level query surface reports, read fresh. The live event below must
+    # agree with it — asserted by COMPARISON rather than by hardcoding a literal, so this
+    # stays true whichever tamper vector the loop above happened to leave in place.
+    fault_state = get("/api/health")
+    check(
+        "S6: /api/health exposes the fault code as a machine-readable token",
+        isinstance(fault_state.get("chainFaultCode"), str) and bool(fault_state["chainFaultCode"]),
+        json.dumps(fault_state),
+    )
+
+    # A second, simultaneous subscriber must get its own complete stream, not a share of the
+    # first one's. MUST-FIX (round 2): it is opened and drained BEFORE the refused write, so
+    # the live assertion below can require BOTH clients to receive the new event. A replay-only
+    # fan-out check cannot catch the classic bug where one shared queue serves one client and
+    # starves (or zombie-steals from) the other — the Reviewer measured exactly that (a=1, b=0).
+    second_stream = EventStream()
+    second_stream.read_frames(1, deadline_s=6.0)
+    check(
+        "S6: a concurrent second subscriber also receives the replay",
+        len(second_stream.frames) >= 1,
+        f"{len(second_stream.frames)} frame(s)",
+    )
+    second_stream.drain(deadline_s=10.0)
+    second_replayed_ids = {frame.get("id") for frame in second_stream.frames}
+    second_frames_at_connect = len(second_stream.frames)
+    check(
+        "S6: the second subscriber's replay is drained to its end marker too",
+        second_stream.replay_complete,
+        f"marker={second_stream.replay_complete} frames={second_frames_at_connect}",
+    )
+
+    subscriber_state = get("/api/health")
+    check(
+        "S6: /api/health reports both live subscribers",
+        subscriber_state.get("eventSubscribers") == 2,
+        json.dumps(subscriber_state),
+    )
+
+    # ONE refused write, with BOTH streams open and both replays drained.
+    status, refused_live = post("/chain/tx", {"type": "AUCTION_BID", "payload": {"auctionId": "auction-vh-morning", "walletId": "wallet-harbour", "credits": 90}})
+    check("S6: appending to the corrupt chain is still refused with 409", status == 409, f"{status} {refused_live}")
+    stream.read_frames(frames_at_connect + 1, deadline_s=8.0)
+    second_stream.read_frames(second_frames_at_connect + 1, deadline_s=8.0)
+    live_frames = stream.frames[frames_at_connect:]
+    second_live_frames = second_stream.frames[second_frames_at_connect:]
+    check(
+        "S6: /events STREAMS a new event live on an already-open connection (one append cycle)",
+        len(live_frames) >= 1,
+        f"{frames_at_connect} drained frame(s) at connect, {len(stream.frames)} after the refused write",
+    )
+    check(
+        "S6: the live frame is NOT replay data — its id was never replayed on this connection",
+        bool(live_frames) and live_frames[0].get("id") not in replayed_ids,
+        f"live id={live_frames[0].get('id') if live_frames else None!r} replayed={sorted(replayed_ids)}",
+    )
+    check(
+        "S6: the live event is a machine-readable TAMPER_DETECTED naming its source",
+        bool(live_frames) and live_frames[0].get("type") == "TAMPER_DETECTED" and live_frames[0].get("source") == "AUCTION_BID",
+        json.dumps(live_frames[:1]),
+    )
+    check(
+        "S6: the live event's faultCode and height agree with /api/health",
+        bool(live_frames)
+        and live_frames[0].get("faultCode") == fault_state["chainFaultCode"]
+        and live_frames[0].get("height") == fault_state["chainFaultHeight"] == 1,
+        json.dumps(live_frames[:1]),
+    )
+    check(
+        "S6: the SECOND concurrent subscriber also received a live event (real fan-out, not a shared queue)",
+        bool(second_live_frames) and second_live_frames[0].get("id") not in second_replayed_ids,
+        f"second live id={second_live_frames[0].get('id') if second_live_frames else None!r} replayed={sorted(second_replayed_ids)}",
+    )
+    check(
+        "S6: both subscribers received the SAME live event id (one publish, two clients)",
+        bool(live_frames) and bool(second_live_frames) and live_frames[0].get("id") == second_live_frames[0].get("id"),
+        f"{live_frames[:1]} vs {second_live_frames[:1]}",
+    )
+    second_stream.close()
+
+    # Disconnects must not leak queues or tasks: once both clients are gone the broker must
+    # fall back to zero subscribers, or a long-lived server would accumulate them forever.
+    # The deadline is generous on purpose. `EventStream.close()` shuts the socket down, so the
+    # server normally releases the subscriber in well under a second; the 20 s only matters if
+    # a FIN is ever missed, in which case the server's own 15 s keep-alive write to the dead
+    # socket is the backstop. The assertion is "no leak", not "released within 1 s".
+    stream.close()
+    check(
+        "S6: disconnecting clients leak no stream subscribers",
+        _wait_for_subscribers(0, deadline_s=20.0),
+        json.dumps(get("/api/health")),
+    )
+
+    # Last-Event-ID: a client that reconnects with the id of the newest event it already has
+    # must not be sent that history again. Best-effort by design (the stream is AT-LEAST-ONCE),
+    # so the assertion is "nothing the client already had was replayed", NOT "nothing was
+    # replayed" — the refused write above recorded a durable event, and delivering THAT is
+    # correct. It runs AFTER the leak check, and alone, so the probe never holds three
+    # connections at once.
+    already_seen = set(stream.frame_ids)
+    resume_stream = EventStream(last_event_id=stream.frame_ids[-1])
+    resume_stream.drain(deadline_s=8.0)
+    check(
+        "S6: Last-Event-ID resumes past the events the client already has (best-effort)",
+        resume_stream.replay_complete and not (set(resume_stream.frame_ids) & already_seen),
+        f"marker={resume_stream.replay_complete} replayed={resume_stream.frame_ids} already-had={sorted(already_seen)}",
+    )
+    resume_stream.close()
+
     # ---- P2 (B2-1): a hostile `sigs` value must not brick the server at boot ---------
     # `sigs` is typed dict[str, str]; an int (123) is a schema violation. Before B2-1 this
     # raised out of load_state() at IMPORT time, so the process never bound at all — a total
@@ -572,6 +923,27 @@ start_server()
 after = get("/api/wallets")
 check("state survives restart", before == after and get("/api/health")["chainHeight"] == height_before, f"heights {height_before} -> " + str(get("/api/health")["chainHeight"]))
 check("chain valid after restart", get("/api/health")["chainValid"] is True)
+
+# `GET /events` must open on a HEALTHY chain too, not only on a corrupt one — the stream is
+# a query surface (PRD S6), not a tamper-only error channel. Replay is legitimately empty
+# here; what matters is that the stream opens, stays open and tears down cleanly.
+valid_stream = EventStream()
+check(
+    "S6: /events opens on a valid chain with an empty replay (query surface, not an error channel)",
+    valid_stream.content_type.startswith("text/event-stream"),
+    valid_stream.content_type,
+)
+check(
+    "S6: the healthy-chain subscriber is registered",
+    get("/api/health").get("eventSubscribers") == 1,
+    json.dumps(get("/api/health")),
+)
+valid_stream.close()
+check(
+    "S6: the healthy-chain subscriber is released on disconnect",
+    _wait_for_subscribers(0, deadline_s=20.0),
+    json.dumps(get("/api/health")),
+)
 
 # ------------------------------------------------------------ adapter payloads
 zones = get("/api/zones")

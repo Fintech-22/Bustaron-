@@ -7,6 +7,7 @@ Serves the PRD §4.4 `server` role on port 8000:
   GET  /api/missions            mission list
   GET  /chain                   full PoA chain (3-of-3 signed, append-only, hash-chained)
   GET  /block/{height}          single block by height
+  GET  /events                  durable ledger events as a live SSE stream (PRD S6)
   POST /chain/tx               submit a transaction (auction bid, approval decision, …)
   GET  /api/auctions            open + decided auctions (server-persisted)
   GET  /api/approvals           approval queue (server-persisted)
@@ -20,27 +21,42 @@ Consensus is 3-of-3 Proof of Authority (PRD §9, FR-B5): every block is
 co-signed by all three authorities in server/authorities.py, and a block is only
 anchored — and only accepted on read — when that quorum verifies.
 
-Tamper handling (PRD S4, PARTIAL): any chain fault is logged with the literal token
-`TAMPER_DETECTED` naming the offending block height, and surfaced via /api/health
-(`tamperDetected` / `chainFault` / `tamperEventCount`). A corrupt state file is REPORTED,
-never re-seeded; `POST /chain/tx` refuses to extend an invalid chain (FR-B6) with 409 and
-records a durable entry in `State.tamper_events`. The `GET /events` stream is S6's job.
+Tamper handling (PRD S4 + FR-B6). Any chain fault is reported through a single
+detection point, `_chain_fault()`, which yields a `ChainFault` — a machine-readable
+`code` + offending `height` beside the human prose. A corrupt state file is REPORTED,
+never re-seeded; `POST /chain/tx` refuses to extend an invalid chain with 409 and
+records a durable event in `State.tamper_events`. `/api/health` exposes `chainValid` /
+`tamperDetected` / `chainFault` / `chainFaultCode` / `tamperEventCount`.
+
+Event delivery (PRD S6, FR-B8). Every durable event is emitted as a machine-readable
+envelope carrying an explicit `type` (`TAMPER_DETECTED`, PRD §9.3) and a stable
+`faultCode`, so a client never has to string-match prose. `GET /events` serves that
+log as a Server-Sent Events stream: it REPLAYS the durable history on connect and then
+pushes new events live, so a tamper recorded during an append cycle reaches a connected
+client within that cycle. `EventBroker` does the fan-out thread-safely, because the
+producer (`submit_tx`) is a sync `def` that FastAPI runs in a threadpool.
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import hashlib
 import json
 import logging
 import os
+import re
 import threading
 import time
+import uuid
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from server.authorities import sign_block_hash, verify_quorum
@@ -57,17 +73,56 @@ app.add_middleware(
 )
 
 
+#: Machine-readable fault codes. A client branches on these; `ChainFault.text` is prose
+#: for humans and must never be matched on. Stable identifiers, so they are constants
+#: rather than inline literals.
+FAULT_STATE_UNREADABLE = "STATE_FILE_UNREADABLE"
+FAULT_BLOCK_LINK = "BLOCK_LINK_BROKEN"
+FAULT_BLOCK_HASH = "BLOCK_HASH_MISMATCH"
+FAULT_QUORUM_INVALID = "QUORUM_INVALID"
+FAULT_UNKNOWN = "UNKNOWN_FAULT"
+
+#: Legacy prose fragment -> fault code. Used to backfill records written BEFORE events
+#: carried a `faultCode` (see `_event_envelope`), so old evidence is still readable by
+#: a machine. Matching is on a stable substring of the prose `_chain_fault` emits.
+_LEGACY_FAULT_CODES: tuple[tuple[str, str], ...] = (
+    ("does not link to its predecessor", FAULT_BLOCK_LINK),
+    ("hash does not match its contents", FAULT_BLOCK_HASH),
+    ("lacks a valid 3-of-3 authority quorum", FAULT_QUORUM_INVALID),
+    ("state file is unreadable or corrupt", FAULT_STATE_UNREADABLE),
+)
+
+
+@dataclass(frozen=True)
+class ChainFault:
+    """A detected integrity fault in machine-readable form.
+
+    * `code` — the stable token a client branches on (see the `FAULT_*` constants);
+    * `height` — the offending block height, or None when the fault cannot be attributed
+      to a block at all (an unreadable/corrupt state file);
+    * `text` — the human prose, preserved verbatim so the existing `/api/health`
+      `chainFault` contract and the `TAMPER_DETECTED` log lines are unchanged.
+    """
+
+    code: str
+    height: int | None
+    text: str
+
+
 class ChainIntegrityError(HTTPException):
     """HTTP 409 raised when a write is refused because the chain is not trustworthy.
 
     A *detected* integrity condition is a conflict with the server's current — corrupt —
     state, NOT a server bug, so it is 409 rather than 5xx (see `submit_tx`, FR-B6).
-    Carries the fault text so the handler can echo it in a machine-readable body.
+    Carries the whole `ChainFault` so the handler can echo both the prose and the
+    machine-readable code in the body.
     """
 
-    def __init__(self, fault: str) -> None:
-        super().__init__(status_code=409, detail=f"Refusing to append to an invalid chain: {fault}")
-        self.fault = fault
+    def __init__(self, fault: ChainFault) -> None:
+        super().__init__(status_code=409, detail=f"Refusing to append to an invalid chain: {fault.text}")
+        self.fault = fault.text
+        self.fault_code = fault.code
+        self.fault_height = fault.height
 
 
 @app.exception_handler(ChainIntegrityError)
@@ -75,14 +130,22 @@ async def _chain_integrity_handler(_request: Request, exc: ChainIntegrityError) 
     """Serialises `ChainIntegrityError` with a top-level, machine-readable `tamperDetected`.
 
     FastAPI's default handler only emits `{"detail": ...}`; tamper clients need a boolean
-    they can branch on without string-matching the detail, so we flatten it here. This
+    they can branch on without string-matching the detail, so we flatten it here — along
+    with `chainFaultCode` / `chainFaultHeight`, which name the fault without prose. This
     handler is registered for the SUBCLASS only, so every other HTTPException keeps its
     default shape.
     """
     return JSONResponse(
         status_code=409,
-        content={"detail": exc.detail, "tamperDetected": True, "chainFault": exc.fault},
+        content={
+            "detail": exc.detail,
+            "tamperDetected": True,
+            "chainFault": exc.fault,
+            "chainFaultCode": exc.fault_code,
+            "chainFaultHeight": exc.fault_height,
+        },
     )
+
 
 DATA_DIR = Path(os.environ.get("BUSTARON_DATA_DIR", Path(__file__).resolve().parent / "data"))
 STATE_PATH = DATA_DIR / "state.json"
@@ -272,36 +335,54 @@ def append_block(state: State, txs: list[dict[str, Any]], proposer: str = "node:
     return block
 
 
-def _report(fault: str) -> str:
+def _report(fault: ChainFault) -> ChainFault:
     """Logs a detected chain fault with the PRD S4 token and returns it to the caller."""
-    logger.error("TAMPER_DETECTED — %s", fault)
+    logger.error("TAMPER_DETECTED — %s", fault.text)
     return fault
 
 
-def _chain_fault(state: State) -> str | None:
+def _chain_fault(state: State) -> ChainFault | None:
     """Description of the FIRST fault in the chain, or None when the chain is valid.
 
     Three independent checks per block (PRD FR-B4 + FR-B5), in order: linkage, integrity
     (the stored `hash` recomputes) and consensus (`verify_quorum` over that hash).
 
     This is the single detection-and-report point for PRD S4: every fault is logged with
-    the literal token `TAMPER_DETECTED` and the offending block height, so no caller can
-    observe an invalid chain silently. A `load_error` placeholder (unreadable/corrupt
-    file) is reported too — it was already logged by `_invalid_state()` when read.
+    the literal token `TAMPER_DETECTED` and returned as a `ChainFault`, so no caller can
+    observe an invalid chain silently and none has to parse prose to learn WHAT broke —
+    `code` names the failure and `height` names the block. A `load_error` placeholder
+    (unreadable/corrupt file) is reported too — it was already logged by
+    `_invalid_state()` when read.
     """
     if state.load_error is not None:
-        return f"state file is unreadable or corrupt: {state.load_error}"
+        return _report(
+            ChainFault(
+                FAULT_STATE_UNREADABLE,
+                None,
+                f"state file is unreadable or corrupt: {state.load_error}",
+            )
+        )
     prev = "0" * 64
     for block in state.blocks:
         recomputed = _hash(
             {"height": block.height, "prev_hash": block.prev_hash, "ts_ms": block.ts_ms, "txs": block.txs}
         )
         if block.prev_hash != prev:
-            return _report(f"block {block.height} does not link to its predecessor")
+            return _report(
+                ChainFault(FAULT_BLOCK_LINK, block.height, f"block {block.height} does not link to its predecessor")
+            )
         if block.hash != recomputed:
-            return _report(f"block {block.height} hash does not match its contents")
+            return _report(
+                ChainFault(FAULT_BLOCK_HASH, block.height, f"block {block.height} hash does not match its contents")
+            )
         if not verify_quorum(block.hash, block.sigs):
-            return _report(f"block {block.height} lacks a valid 3-of-3 authority quorum")
+            return _report(
+                ChainFault(
+                    FAULT_QUORUM_INVALID,
+                    block.height,
+                    f"block {block.height} lacks a valid 3-of-3 authority quorum",
+                )
+            )
         prev = block.hash
     return None
 
@@ -319,19 +400,178 @@ def verify_chain(state: State) -> bool:
 #: and each refusal appends one event, so without a bound the list grows without limit.
 MAX_TAMPER_EVENTS = 100
 
+#: The one event type a durable record can carry today (PRD §9.3). Named as a constant
+#: because clients select on this token rather than on the prose `fault` field.
+EVENT_TAMPER_DETECTED = "TAMPER_DETECTED"
 
-def _record_tamper_event(state: State, fault: str, source: str) -> None:
+#: Heartbeat cadence for `GET /events`. A comment frame this often keeps idle proxies
+#: from reaping the connection and lets a vanished client be noticed promptly.
+EVENT_HEARTBEAT_S = 15.0
+
+#: How often an idle stream re-checks whether its client is still connected. Decoupled
+#: from `EVENT_HEARTBEAT_S` on purpose: a blocked queue read cannot notice a disconnect,
+#: so this bounds how long a client that has gone away can hold a queue. Keep-alive
+#: traffic stays at the slower heartbeat cadence.
+EVENT_POLL_S = 1.0
+
+#: Per-subscriber backlog for `GET /events`. A client that stops reading must never stall
+#: the producer — which is a synchronous request thread — so a full queue sheds its OLDEST
+#: entry instead of blocking. Nothing is lost durably: a reconnecting client replays the
+#: whole durable log again.
+MAX_QUEUED_EVENTS = 256
+
+#: SSE comment frame emitted once, immediately after the replay, to mark the end of history.
+#: A line beginning with ':' is ignored by every SSE client by spec, so this is invisible to
+#: consumers; it exists because a client cannot otherwise distinguish "history is finished"
+#: from "history is still arriving", and therefore cannot distinguish a replayed event from a
+#: live one either. Detection tests key their live boundary on this marker.
+REPLAY_COMPLETE_MARKER = "replay-complete"
+
+
+class EventBroker:
+    """Fan-out of ledger events to live `GET /events` subscribers.
+
+    Producers call `publish()` from a WORKER THREAD: `submit_tx` is a sync `def`, so
+    FastAPI runs it in a threadpool, while subscribers are `asyncio.Queue`s owned by the
+    server's event loop. `asyncio.Queue` is NOT thread-safe, so the handoff goes through
+    `loop.call_soon_threadsafe()` — a bare `put_nowait()` from the producer thread would
+    corrupt the queue.
+
+    `publish()` is a deliberate no-op when no loop is bound or the loop is closed:
+    `_record_tamper_event` also runs at import time (state loading, before uvicorn starts
+    a loop) and publishing there must never raise. A dropped live event is not lost — it
+    is durable in `state.tamper_events`, and every new subscriber replays that log first.
+    """
+
+    def __init__(self) -> None:
+        self._subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
+        self._lock = threading.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def subscribe(self) -> asyncio.Queue[dict[str, Any]]:
+        """Registers a subscriber. Must be called from the event-loop thread."""
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=MAX_QUEUED_EVENTS)
+        with self._lock:
+            self._subscribers.add(queue)
+            with contextlib.suppress(RuntimeError):
+                # Not on a loop (should not happen for an endpoint): publish stays a no-op.
+                self._loop = asyncio.get_running_loop()
+        return queue
+
+    def unsubscribe(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
+        """Drops a subscriber. Called from the stream generator's `finally`."""
+        with self._lock:
+            self._subscribers.discard(queue)
+
+    def subscriber_count(self) -> int:
+        """Live `GET /events` subscriber count — observability, and the leak check."""
+        with self._lock:
+            return len(self._subscribers)
+
+    def publish(self, event: dict[str, Any]) -> None:
+        """Publishes to every current subscriber. Thread-safe and never raises."""
+        with self._lock:
+            loop = self._loop
+            subscribers = list(self._subscribers)
+        if loop is None or loop.is_closed():
+            return
+        try:
+            loop.call_soon_threadsafe(self._fanout, event, subscribers)
+        except RuntimeError:
+            # The loop closed between the check above and the handoff.
+            return
+
+    def _fanout(self, event: dict[str, Any], subscribers: list[asyncio.Queue[dict[str, Any]]]) -> None:
+        """Runs ON THE LOOP. Never blocks: a full queue sheds its oldest entry."""
+        for queue in subscribers:
+            if queue.full():
+                with contextlib.suppress(asyncio.QueueEmpty):  # full implies non-empty
+                    queue.get_nowait()
+            queue.put_nowait(event)
+
+
+EVENT_BROKER = EventBroker()
+
+
+def _fault_code_from_text(text: str) -> str:
+    """Backfills a machine-readable code for a record written before events carried one."""
+    for needle, code in _LEGACY_FAULT_CODES:
+        if needle in text:
+            return code
+    return FAULT_UNKNOWN
+
+
+def _height_from_text(text: str) -> int | None:
+    """Backfills the offending block height from legacy prose (`block 3 …`), if named."""
+    match = re.search(r"\bblock (\d+)\b", text)
+    return int(match.group(1)) if match else None
+
+
+def _event_envelope(raw: dict[str, Any], ordinal: int | None = None) -> dict[str, Any]:
+    """Normalises a durable event record into the machine-readable event envelope.
+
+    The shape a client sees (PRD §9.3 lists `TAMPER_DETECTED` as a transaction type)::
+
+        {"id": <unique>, "type": "TAMPER_DETECTED", "atMs": <int>, "source": <tx type>,
+         "faultCode": <stable token>, "height": <block height | null>, "fault": <prose>}
+
+    `type` and `faultCode` are the fields a client branches on. `fault` is prose and is
+    never meant to be matched on — that is the whole point of this envelope.
+
+    Normalisation happens ON READ, deliberately: a record persisted in the pre-B3 shape
+    (``{"atMs", "source", "fault"}`` — no `type`, no code, no height) is upgraded on the
+    fly, so the evidence file is never rewritten just to be readable and old records stay
+    usable. The `id` is unique and is the deduplication key for the replay/live handoff in
+    `events()`: a record written by this server carries a uuid, and a pre-B3 record — which
+    was never assigned one — gets a POSITION-derived `legacy-{atMs}-{code}-{ordinal}`.
+    Position is what makes it unique: a content-derived id collides for two legacy records
+    in the same millisecond with the same code. `ordinal` is the record's index in the
+    durable log; the replay loop always supplies it.
+    """
+    text = str(raw.get("fault", ""))
+    code = raw.get("faultCode") or _fault_code_from_text(text)
+    height = raw.get("height")
+    if height is None:
+        height = _height_from_text(text)
+    at_ms = raw.get("atMs")
+    return {
+        "id": raw.get("id") or f"legacy-{at_ms}-{code}-{ordinal}",
+        "type": raw.get("type") or EVENT_TAMPER_DETECTED,
+        "atMs": at_ms,
+        "source": raw.get("source"),
+        "faultCode": code,
+        "height": height,
+        "fault": text,
+    }
+
+
+def _record_tamper_event(state: State, fault: ChainFault, source: str) -> None:
     """Appends a DURABLE `TAMPER_DETECTED` audit entry to `state.tamper_events`.
 
     Called when a write is refused (FR-B6). The event cannot be a block — appending a
     block to the chain we just declared corrupt would be self-contradictory — so it is
     recorded beside the chain and persisted with the rest of the state.
 
+    The entry is written in the machine-readable envelope shape (explicit `type` + stable
+    `faultCode` + offending `height`), NOT as prose, so a consumer selects the event
+    without string-matching. Records predating this shape are upgraded on read by
+    `_event_envelope`.
+
     When the state file itself could not be parsed (`load_error` set) we log only and do
     NOT write: re-serialising the placeholder would overwrite the corrupt file and destroy
-    the very evidence of tampering we are reporting.
+    the very evidence of tampering we are reporting. The event is still PUBLISHED to live
+    subscribers in that case — the detection is real even when it cannot be persisted.
     """
-    state.tamper_events.append({"atMs": _now_ms(), "source": source, "fault": fault})
+    event = {
+        "id": uuid.uuid4().hex,
+        "type": EVENT_TAMPER_DETECTED,
+        "atMs": _now_ms(),
+        "source": source,
+        "faultCode": fault.code,
+        "height": fault.height,
+        "fault": fault.text,
+    }
+    state.tamper_events.append(event)
     del state.tamper_events[:-MAX_TAMPER_EVENTS]  # keep only the most recent 100 (spam-growth guard)
     if state.load_error is None:
         save_state(state)
@@ -339,9 +579,12 @@ def _record_tamper_event(state: State, fault: str, source: str) -> None:
         logger.error(
             "TAMPER_DETECTED — %s (source=%s); tamper event NOT persisted: the state file is "
             "unreadable, so writing would erase the evidence.",
-            fault,
+            fault.text,
             source,
         )
+    # Published AFTER the durable write, so a live subscriber never observes an event that
+    # is not (yet) on disk. Safe from this thread; a no-op outside a running loop.
+    EVENT_BROKER.publish(_event_envelope(event))
 
 
 def wallet_of(state: State, wallet_id: str) -> dict[str, Any]:
@@ -603,8 +846,8 @@ class FileApprovalPayload(BaseModel):
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     """Liveness + chain stats. `status` is LIVENESS ONLY — a tampered chain still serves,
-    so pollers must read `chainValid` / `tamperDetected`, not `status`. PRD S4 (partial):
-    the chain's tamper state is exposed here; the `GET /events` stream is S6's job.
+    so pollers must read `chainValid` / `tamperDetected`, not `status`. PRD S4: the chain's
+    tamper state is exposed here; `GET /events` additionally STREAMS it.
     """
     state = load_state()
     fault = _chain_fault(state)  # logs TAMPER_DETECTED on the first fault
@@ -613,10 +856,17 @@ def health() -> dict[str, Any]:
         "chainHeight": len(state.blocks),
         "chainValid": fault is None,
         "tamperDetected": fault is not None,
-        "chainFault": fault,
+        "chainFault": fault.text if fault is not None else None,
+        # Machine-readable companion to `chainFault`: a poller branches on the code
+        # instead of string-matching the prose. None when the chain is valid.
+        "chainFaultCode": fault.code if fault is not None else None,
+        "chainFaultHeight": fault.height if fault is not None else None,
         # Durable count of REFUSED writes (FR-B6) — a non-zero count with a now-valid
         # chain still means someone tried to extend a corrupt chain at some point.
         "tamperEventCount": len(state.tamper_events),
+        # Live `GET /events` subscribers. Must fall back to 0 as clients disconnect —
+        # a count that only climbs means a stream leaked its queue.
+        "eventSubscribers": EVENT_BROKER.subscriber_count(),
         "auctions": len(state.auctions),
         "approvals": len(state.approvals),
         "wallets": len(state.wallets),
@@ -639,6 +889,115 @@ def block_by_height(height: int) -> dict[str, Any]:
     if height < 0 or height >= len(state.blocks):
         raise HTTPException(status_code=404, detail=f"No block at height {height}")
     return state.blocks[height].model_dump()
+
+
+def _sse_frame(event: dict[str, Any]) -> str:
+    """Serialises one event as a Server-Sent Events frame.
+
+    An `id:` field carries the event's `id`, which is what an SSE client echoes back in
+    `Last-Event-ID` when it reconnects (see `events()`). Note the stream is AT-LEAST-ONCE:
+    resume is best-effort, so a client must tolerate seeing the same `id` twice and must
+    deduplicate on `id` rather than assume it has seen each event exactly once.
+
+    Only a `data:` field is emitted beyond that, deliberately — the machine-readable `type`
+    travels INSIDE the JSON payload rather than in an SSE `event:` field, for two reasons:
+
+    * an `event:` name suppresses the default "message" event, so a client using the most
+      ordinary `new EventSource(url).onmessage = …` would silently receive NOTHING. A
+      `data:`-only frame is delivered to `onmessage` and to every SSE library alike;
+    * one source of truth for the type. Carrying it in both the `event:` field and the
+      payload invites the two drifting apart, and a client that trusts the frame name would
+      then be reading a value nothing validates.
+
+    A client reads `type` from the parsed payload — never from the prose `fault` string.
+    """
+    return f"id: {event['id']}\ndata: {json.dumps(event, sort_keys=True, separators=(',', ':'))}\n\n"
+
+
+@app.get("/events")
+async def events(request: Request) -> StreamingResponse:
+    """S6 / FR-B8: the durable event log as a live Server-Sent Events stream.
+
+    Two halves, in this order:
+
+    1. **Replay** — every event already durable in `state.tamper_events` is sent on
+       connect, so a client that subscribes AFTER the fact still learns the chain was
+       corrupted. History is not a substitute for the stream, and the stream is not a
+       substitute for history: S4 is only observable if both are delivered. The replay is
+       closed by a `REPLAY_COMPLETE_MARKER` comment frame, so a client can tell where
+       history ends and live delivery begins.
+    2. **Live** — events recorded while the connection is open are pushed as they are
+       produced, so a tamper detected during an append cycle reaches the client WITHIN
+       that cycle instead of on the next poll.
+
+    The subscription is registered BEFORE the replay snapshot is read, and both happen
+    without an `await`, so a concurrently published event cannot slip through the gap: it
+    lands in the queue and is deduplicated against the replay by `id`.
+
+    **Delivery guarantee: AT-LEAST-ONCE.** A reconnecting client sends the last `id` it saw
+    in `Last-Event-ID`; when that id is still in the replay we resume after it, but when it is
+    not (evicted by the `MAX_TAMPER_EVENTS` bound, or simply unknown) we send the WHOLE replay
+    rather than nothing — a duplicate is safe, a silent gap is not. Clients must therefore
+    deduplicate on `id` and not assume each event is seen exactly once.
+
+    `StreamingResponse` over an async generator is a genuine stream — no Content-Length,
+    chunked transfer — and Starlette cancels the generator when the client disconnects, so
+    the `finally` below always unregisters the queue (no leaked tasks or queues).
+    """
+    queue = EVENT_BROKER.subscribe()
+    replay: list[dict[str, Any]] = []
+    replayed_ids: set[str] = set()
+    for ordinal, raw in enumerate(load_state().tamper_events):
+        event = _event_envelope(raw, ordinal)
+        replayed_ids.add(event["id"])
+        replay.append(event)
+
+    # Best-effort resume from `Last-Event-ID`. Only a known id lets us skip; an unknown one
+    # replays everything (see the at-least-once note above).
+    resume_from = request.headers.get("last-event-id")
+    if resume_from in replayed_ids:
+        already_seen = next(index for index, event in enumerate(replay) if event["id"] == resume_from)
+        replay = replay[already_seen + 1 :]
+
+    async def stream() -> AsyncIterator[str]:
+        try:
+            for event in replay:
+                yield _sse_frame(event)
+            # An SSE COMMENT frame (a line starting with ':', ignored by every SSE client by
+            # spec) marking the end of history. See REPLAY_COMPLETE_MARKER: without it a
+            # client cannot tell a finished replay from an in-flight one, so it cannot tell a
+            # replayed event from a live one — which is exactly the ambiguity that let a
+            # detection probe pass with live delivery dead.
+            yield f": {REPLAY_COMPLETE_MARKER}\n\n"
+            last_keepalive = time.monotonic()
+            while True:
+                # Polled every EVENT_POLL_S rather than only when the queue read times
+                # out: a disconnect is only observable through `receive()`, so a long
+                # blocking read would keep a dead client's queue alive for that whole
+                # interval. The keep-alive frame itself stays on the slower heartbeat.
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=EVENT_POLL_S)
+                except TimeoutError:
+                    # `asyncio.TimeoutError` is the builtin `TimeoutError` on py3.11+.
+                    if time.monotonic() - last_keepalive >= EVENT_HEARTBEAT_S:
+                        last_keepalive = time.monotonic()
+                        yield ": keep-alive\n\n"  # comment frame: ignored by SSE clients
+                    continue
+                if event["id"] in replayed_ids:
+                    continue  # already delivered in the replay above
+                yield _sse_frame(event)
+        finally:
+            # Runs on normal exit AND on the cancellation Starlette raises when the client
+            # goes away, so every subscriber is unregistered exactly once.
+            EVENT_BROKER.unsubscribe(queue)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/api/wallets")
