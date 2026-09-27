@@ -42,9 +42,10 @@ related: []
 
 - [[cad-ring-order-corruption-broke-rfz-containment]] — CAD ring-order corruption broke RFZ containment · status: fixed · 2026-09-26
 
-### Progress (6)
+### Progress (7)
 
 - [[b3-get-events-sse-and-machine-readable-event-type]] — B3 — `GET /events` SSE + machine-readable event type (S4 → MET, S6 → MET) · status: done · 2026-09-27
+- [[b4-negotiation-engine-wired-and-anchored]] — B4 — §8 negotiation engine: reviewed, wired, anchored on-chain (S25 → MET, S22 → MET) · status: done · 2026-09-27
 - [[m3-phase-2-3-of-3-proof-of-authority]] — M3 phase 2 — 3-of-3 Proof-of-Authority consensus (B2) · status: done · 2026-09-27
 - [[settle-and-file-endpoints]] — M3 phase 2 — settle + file-approval endpoints · status: done · 2026-09-27
 - [[step-0-r2-stabilize-uncommitted-increment]] — STEP 0 (run 2) — Stabilize the uncommitted increment · status: done · 2026-09-27
@@ -63,4 +64,4 @@ related: []
 - `bugs/` — Bug notes
 - `sessions/` — Session notes
 
-_18 note(s) · vault: `docs/vault`_
+_19 note(s) · vault: `docs/vault`_

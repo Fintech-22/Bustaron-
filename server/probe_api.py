@@ -968,9 +968,146 @@ check(
     "missions endpoint serves a non-empty seeded list (north star 5)",
     isinstance(missions, list)
     and len(missions) > 0
-    and all({"id", "name", "route", "status", "riskLevel"} <= set(mission) for mission in missions),
-    f"{len(missions) if isinstance(missions, list) else missions} rows",
+    and all({"id", "name", "route", "status", "riskLevel"} <= set(mission) for mission in missions),        f"{len(missions) if isinstance(missions, list) else missions} rows",
+    )
+
+# ------------------------------------------------- negotiation protocol (PRD §8)
+# FR-N6 / S25: the exchange is anchored BEFORE the caller sees it — one block per
+# message. These checks cover the API contract (three ordered NEGOTIATION blocks, the
+# transcript, the chain replay, no anchor for a conflict-free pair). The engine's own
+# semantics live in `server/probe_agents.py`, which runs with no server at all.
+# The pair below is 200 m apart INSIDE one 600 m skycell: separation alone is fine
+# (>150 m), so the conflict can only come from the skycell rule — a reason that must
+# survive the HTTP round trip as a machine-readable token, not prose.
+neg_height_before = get("/api/health")["chainHeight"]
+conflicting_pair = {
+    "own": {"id": "drone-a", "lat": 22.300000, "lng": 114.150000, "alt_m": 100.0, "battery_pct": 80.0},
+    "peer": {"id": "drone-b", "lat": 22.3017965, "lng": 114.150000, "alt_m": 100.0, "battery_pct": 80.0},
+    "windowStartS": 0,
+}
+status, body = post("/negotiate", conflicting_pair)
+conflict = body.get("conflict") or {}
+check("S25: /negotiate anchors an exchange", status == 200 and body.get("ok") is True, f"{status} {json.dumps(body)[:160]}")
+check(
+    "FR-N2/S25: the conflict id is deterministic and the reason is machine-readable",
+    str(conflict.get("conflictId", "")).startswith("cf_") and conflict.get("reason") == "SKYCELL",
+    json.dumps(conflict)[:160],
 )
+blocks = body.get("blocks") or []
+check(
+    "FR-N6: three blocks, one per message, strictly ascending",
+    len(blocks) == 3 and blocks == sorted(blocks) and len(set(blocks)) == 3,
+    str(blocks),
+)
+transcript = body.get("transcript") or []
+check(
+    "S25: the transcript runs PROPOSE -> response -> RESOLVE",
+    len(transcript) == 3 and transcript[0].get("action") == "PROPOSE" and transcript[2].get("action") == "RESOLVE",
+    json.dumps([message.get("action") for message in transcript]),
+)
+check(
+    "FR-N4/S25: one conflict_id across the exchange, endpoints swapped in the response",
+    len({message.get("conflict_id") for message in transcript}) == 1
+    and transcript[0].get("from") == "drone-a"
+    and transcript[0].get("to") == "drone-b"
+    and transcript[1].get("from") == "drone-b"
+    and transcript[1].get("to") == "drone-a",
+    json.dumps([(message.get("from"), message.get("to")) for message in transcript]),
+)
+check(
+    "S22: the latency comes from the block timestamps, not from prose",
+    isinstance(body.get("latencyMs"), int) and body["latencyMs"] >= 0 and body.get("engine") == "deterministic",
+    f"engine={body.get('engine')} latencyMs={body.get('latencyMs')}",
+)
+health = get("/api/health")
+check(
+    "FR-N6: the chain grew by exactly three blocks and stayed valid",
+    health["chainHeight"] == neg_height_before + 3 and health["chainValid"] is True,
+    f"{neg_height_before} -> {health['chainHeight']}",
+)
+anchored_txs = (get(f"/block/{blocks[0]}").get("txs") if blocks else None) or [{}]
+check(
+    "S25: the anchored block carries the PROPOSE envelope as a NEGOTIATION tx",
+    anchored_txs[0].get("type") == "NEGOTIATION"
+    and (anchored_txs[0].get("result") or {}).get("envelope", {}).get("action") == "PROPOSE",
+    json.dumps(anchored_txs)[:200],
+)
+replay = get("/negotiations")
+replayed = next(
+    (group for group in replay.get("negotiations", []) if group.get("conflictId") == conflict.get("conflictId")),
+    None,
+)
+check(
+    "S25/S6: /negotiations replays the exchange from the chain, grouped by conflict id",
+    replayed is not None
+    and [block["height"] for block in replayed["blocks"]] == blocks
+    and len(replayed["messages"]) == 3,
+    json.dumps(replayed)[:200] if replayed else "group not found",
+)
+check(
+    "S25/S6: the replay reports the chain verdict and the fallback flag",
+    replay.get("chainValid") is True and replayed is not None and replayed.get("fallback") is False,
+    json.dumps({k: replay.get(k) for k in ("chainValid",)}),
+)
+height_after_negotiation = get("/api/health")["chainHeight"]
+quiet_pair = {
+    "own": {"id": "drone-a", "lat": 22.300000, "lng": 114.150000, "alt_m": 100.0, "battery_pct": 80.0},
+    "peer": {"id": "drone-b", "lat": 22.330000, "lng": 114.200000, "alt_m": 100.0, "battery_pct": 80.0},
+}
+status, quiet = post("/negotiate", quiet_pair)
+check(
+    "no conflict, no anchor: a conflict-free pair appends nothing",
+    status == 200
+    and quiet.get("conflict") is None
+    and quiet.get("blocks") == []
+    and get("/api/health")["chainHeight"] == height_after_negotiation,
+    f"{status} {json.dumps(quiet)[:120]}",
+)
+status, rejected = post("/chain/tx", {"type": "NEGOTIATION", "payload": {}})
+check(
+    "NEGOTIATION is server-minted: the schema rejects it up front (422, not a 400 trap)",
+    status == 422,
+    f"{status} {json.dumps(rejected)[:120]}",
+)
+
+# A corrupt chain must refuse a NEGOTIATION for the same reason it refuses a bid
+# (FR-B6): the endpoint recomputes the chain first, records the refusal durably with
+# source=NEGOTIATION, and appends nothing. This is the ONE branch of `/negotiate` that a
+# healthy-chain run cannot reach, so it gets its own tamper cycle at the end — after every
+# other section, so no earlier count-based assertion is disturbed — and restores a
+# pristine state before the probe exits.
+kill_server()
+tampered_state = json.loads(STATE_PATH.read_text("utf-8"))
+_corrupt_txs(tampered_state)
+STATE_PATH.write_text(json.dumps(tampered_state), "utf-8")
+try:
+    start_server()
+    tampered_height = get("/api/health")["chainHeight"]
+    status, refused_negotiation = post("/negotiate", conflicting_pair)
+    check(
+        "FR-B6: /negotiate on a corrupt chain is REFUSED (409, nothing appended)",
+        status == 409
+        and refused_negotiation.get("tamperDetected") is True
+        and get("/api/health")["chainHeight"] == tampered_height,
+        f"{status} height {tampered_height} -> {get('/api/health')['chainHeight']}",
+    )
+    check(
+        "FR-B6: the refusal names the fault without prose and records its source",
+        refused_negotiation.get("chainFaultCode") is not None
+        and refused_negotiation.get("chainFaultHeight") is not None,
+        json.dumps(refused_negotiation)[:200],
+    )
+    tamper_replay = get("/negotiations")
+    check(
+        "S25/S6: the replay surface stays available and reports the chain invalid",
+        tamper_replay.get("chainValid") is False,
+        json.dumps(tamper_replay.get("chainValid")),
+    )
+finally:
+    kill_server()
+    reset_state_file()
+    start_server()
+check("restored: the probe leaves a valid chain behind", get("/api/health")["chainValid"] is True)
 
 print()
 print("ALL CHECKS PASSED" if failures == 0 else f"{failures} CHECK(S) FAILED")

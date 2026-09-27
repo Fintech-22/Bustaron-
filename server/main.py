@@ -8,7 +8,9 @@ Serves the PRD §4.4 `server` role on port 8000:
   GET  /chain                   full PoA chain (3-of-3 signed, append-only, hash-chained)
   GET  /block/{height}          single block by height
   GET  /events                  durable ledger events as a live SSE stream (PRD S6)
-  POST /chain/tx               submit a transaction (auction bid, approval decision, …)
+  POST /chain/tx              submit a transaction (auction bid, approval decision, …)
+  POST /negotiate             run the PRD §8 negotiation engine and ANCHOR the exchange
+  GET  /negotiations          replay anchored negotiations from the chain
   GET  /api/auctions            open + decided auctions (server-persisted)
   GET  /api/approvals           approval queue (server-persisted)
   GET  /api/wallets             credit wallets (server-persisted)
@@ -27,6 +29,13 @@ detection point, `_chain_fault()`, which yields a `ChainFault` — a machine-rea
 never re-seeded; `POST /chain/tx` refuses to extend an invalid chain with 409 and
 records a durable event in `State.tamper_events`. `/api/health` exposes `chainValid` /
 `tamperDetected` / `chainFault` / `chainFaultCode` / `tamperEventCount`.
+
+Negotiation (PRD §8, FR-N6/S25). `POST /negotiate` runs the engine in
+`server/agents.py` — the deterministic policy by default, an OpenAI-compatible LLM when
+`BUSTARON_LLM_*` is configured, with a mandatory deterministic fallback (FR-N8) — and
+anchors the proposal, response and resolution as three consecutive NEGOTIATION blocks
+BEFORE returning them, so a caller acts only on a confirmed exchange. `GET /negotiations`
+replays every anchored exchange from the chain.
 
 Event delivery (PRD S6, FR-B8). Every durable event is emitted as a machine-readable
 envelope carrying an explicit `type` (`TAMPER_DETECTED`, PRD §9.3) and a stable
@@ -59,6 +68,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
+from server.agents import DroneTrack, LLMNegotiator, WeatherSnapshot, validate_exchange
 from server.authorities import sign_block_hash, verify_quorum
 
 app = FastAPI(title="BUSTARON M3 server", version="0.1.0")
@@ -743,10 +753,22 @@ def _mission(
 #: mirrors the frontend's own fleet — same ids, operator ids and callsigns — and
 #: is written into `State.drones` by `seed_if_empty()`.
 SEED_DRONES = [
-    _drone("drone-hk-01", "BSN-01", "wallet-harbour", 22.303, 114.171, 118, "nominal", 82, "mission-vh-12", 82, 42, "2026-09-24T13:35:00.000Z"),
-    _drone("drone-hk-02", "BSN-07", "wallet-urban", 22.281, 114.158, 92, "warning", 35, "mission-cbd-04", 248, 34, "2026-09-24T13:34:40.000Z"),
-    _drone("drone-hk-03", "BSN-11", "wallet-cargo", 22.337, 114.201, 142, "nominal", 68, "mission-kt-19", 32, 39, "2026-09-24T13:34:55.000Z"),
-    _drone("drone-hk-04", "BSN-15", "wallet-harbour", 22.318, 114.134, 0, "grounded", 91, "mission-standby", 0, 0, "2026-09-24T13:30:00.000Z"),
+    _drone(
+        "drone-hk-01", "BSN-01", "wallet-harbour", 22.303, 114.171, 118, "nominal", 82,
+        "mission-vh-12", 82, 42, "2026-09-24T13:35:00.000Z",
+    ),
+    _drone(
+        "drone-hk-02", "BSN-07", "wallet-urban", 22.281, 114.158, 92, "warning", 35,
+        "mission-cbd-04", 248, 34, "2026-09-24T13:34:40.000Z",
+    ),
+    _drone(
+        "drone-hk-03", "BSN-11", "wallet-cargo", 22.337, 114.201, 142, "nominal", 68,
+        "mission-kt-19", 32, 39, "2026-09-24T13:34:55.000Z",
+    ),
+    _drone(
+        "drone-hk-04", "BSN-15", "wallet-harbour", 22.318, 114.134, 0, "grounded", 91,
+        "mission-standby", 0, 0, "2026-09-24T13:30:00.000Z",
+    ),
 ]
 
 #: Seeded mission list. Mirrors the frontend mock missions so `/api/missions`
@@ -1107,7 +1129,13 @@ def apply_bid(state: State, payload: BidPayload) -> dict[str, Any]:
     wallet["reservedCredits"] += payload.credits
     bid_id = f"bid-{payload.walletId}-{_now_ms()}"
     auction["bids"].append(
-        {"id": bid_id, "walletId": payload.walletId, "bidder": wallet["operatorName"], "credits": payload.credits, "submittedIso": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())}
+        {
+            "id": bid_id,
+            "walletId": payload.walletId,
+            "bidder": wallet["operatorName"],
+            "credits": payload.credits,
+            "submittedIso": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+        }
     )
     return {"auctionId": payload.auctionId, "bidId": bid_id, "state": state}
 
@@ -1132,9 +1160,20 @@ def apply_award(state: State, payload: AwardPayload) -> dict[str, Any]:
     auction["status"] = "awarded"
     auction["winningBidId"] = winning["id"]
     state.credit_ledger.append(
-        {"id": f"ledger-award-{payload.auctionId}-{_now_ms()}", "walletId": winner["id"], "deltaCredits": 0, "reason": f"Won auction {auction['slotName']}", "atIso": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())}
+        {
+            "id": f"ledger-award-{payload.auctionId}-{_now_ms()}",
+            "walletId": winner["id"],
+            "deltaCredits": 0,
+            "reason": f"Won auction {auction['slotName']}",
+            "atIso": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+        }
     )
-    return {"auctionId": payload.auctionId, "winningBidId": winning["id"], "winnerWalletId": winner["id"], "state": state}
+    return {
+        "auctionId": payload.auctionId,
+        "winningBidId": winning["id"],
+        "winnerWalletId": winner["id"],
+        "state": state,
+    }
 
 
 def apply_approval_decision(state: State, payload: ApprovalPayload) -> dict[str, Any]:
@@ -1159,7 +1198,13 @@ def apply_approval_decision(state: State, payload: ApprovalPayload) -> dict[str,
     approval["status"] = payload.decision
     approval["decisionReason"] = trimmed or None
     state.credit_ledger.append(
-        {"id": f"ledger-{payload.approvalId}-{payload.decision}-{_now_ms()}", "walletId": wallet["id"], "deltaCredits": 0 if payload.decision == "approved" else approval["creditsEscrowed"], "reason": ledger_reason, "atIso": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())}
+        {
+            "id": f"ledger-{payload.approvalId}-{payload.decision}-{_now_ms()}",
+            "walletId": wallet["id"],
+            "deltaCredits": 0 if payload.decision == "approved" else approval["creditsEscrowed"],
+            "reason": ledger_reason,
+            "atIso": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+        }
     )
     return {"approvalId": payload.approvalId, "decision": payload.decision, "state": state}
 
@@ -1252,6 +1297,143 @@ def apply_file_approval(state: State, payload: FileApprovalPayload) -> dict[str,
         "creditsEscrowed": payload.creditsEscrowed,
         "state": state,
     }
+
+
+# ------------------------------------------------- negotiation protocol (PRD §8)
+#: The tx type `/negotiate` anchors. NEGOTIATION is SERVER-MINTED, exactly like GENESIS:
+#: it is produced by the engine and written through `append_block()`, and is deliberately
+#: NOT a member of `TXType` — so it can never be advertised to a client and then rejected
+#: at runtime (the AUCTION_SETTLE trap, fixed in phase 2). Accepting bare drone-submitted
+#: envelopes with on-chain pairing is a separate increment; until then the engine is the
+#: only producer, and the API says so by omission.
+NEGOTIATION_TX = "NEGOTIATION"
+
+
+class NegotiateRequest(BaseModel):
+    """Two tracks + the negotiation window. Weather is optional and honestly reported
+    stale when absent — the HKO poller (PRD §5.2) is a separate, not-yet-built task."""
+
+    own: DroneTrack
+    peer: DroneTrack
+    windowStartS: int = 0
+    weather: WeatherSnapshot | None = None
+
+
+def _conflict_payload(conflict: Any) -> dict[str, Any]:
+    """The `ConflictEvent` dataclass as JSON — field names kept verbatim."""
+    return {
+        "conflictId": conflict.conflict_id,
+        "droneA": conflict.drone_a,
+        "droneB": conflict.drone_b,
+        "windowStartS": conflict.window_start_s,
+        "minSeparationM": conflict.min_separation_m,
+        "firstConflictTS": conflict.first_conflict_t_s,
+        "reason": conflict.reason,
+    }
+
+
+@app.post("/negotiate")
+def negotiate(request: NegotiateRequest) -> dict[str, Any]:
+    """Runs the §8 engine over two tracks and ANCHORS the exchange (FR-N6 / S25).
+
+    One block per message, in order — proposal, response, resolution — so "acted upon
+    only after block confirmation" holds message by message and the on-chain `ts_ms` of
+    the first and last block is the S22 latency evidence. A conflict-free pair anchors
+    NOTHING: an empty exchange is not an event.
+    """
+    with STATE_LOCK:
+        state = load_state()
+        seed_if_empty(state)
+        fault = _chain_fault(state)
+        if fault is not None:
+            _record_tamper_event(state, fault, NEGOTIATION_TX)
+            raise ChainIntegrityError(fault)
+        negotiator = LLMNegotiator()
+        outcome = negotiator.negotiate(
+            request.own, request.peer, request.windowStartS, _now_ms(), request.weather
+        )
+        if outcome is None:
+            return {"ok": True, "conflict": None, "engine": negotiator.name(), "blocks": []}
+        problems = validate_exchange(outcome.proposal, outcome.response)
+        if problems:
+            # The engine produced an exchange its own validator rejects. That is an
+            # engine bug, not a client error — refuse rather than anchor a transcript
+            # that breaks FR-N4. 500, matching the quorum-invariant guard below.
+            raise HTTPException(
+                status_code=500,
+                detail="Negotiation engine produced an invalid exchange: " + "; ".join(problems),
+            )
+        heights: list[int] = []
+        timestamps: list[int] = []
+        for index, envelope in enumerate((outcome.proposal, outcome.response, outcome.resolution)):
+            anchor: dict[str, Any] = {
+                "type": NEGOTIATION_TX,
+                "result": {"envelope": envelope.model_dump(by_alias=True), "engine": negotiator.name()},
+            }
+            if index == 2:
+                anchor["result"]["fallback"] = outcome.fallback
+            block = append_block(state, [anchor])
+            if not verify_quorum(block.hash, block.sigs):
+                state.blocks.pop()
+                raise HTTPException(
+                    status_code=500,
+                    detail="Server invariant violation: negotiation block failed the 3-of-3 authority quorum",
+                )
+            heights.append(block.height)
+            timestamps.append(block.ts_ms)
+        save_state(state)
+        return {
+            "ok": True,
+            "engine": negotiator.name(),
+            "conflict": _conflict_payload(outcome.conflict),
+            "fallback": outcome.fallback,
+            "blocks": heights,
+            "latencyMs": timestamps[-1] - timestamps[0],
+            "transcript": [
+                envelope.model_dump(by_alias=True)
+                for envelope in (outcome.proposal, outcome.response, outcome.resolution)
+            ],
+        }
+
+
+@app.get("/negotiations")
+def negotiations() -> dict[str, Any]:
+    """Replays every anchored negotiation from the chain (FR-N6 / S25 / S6).
+
+    The chain IS the store: nothing is cached, so a tampered message cannot be replayed
+    as if it were agreed. `latencyMs` is computed from the BLOCK timestamps — the S22
+    evidence — not from the envelopes' own `ts_ms`.
+    """
+    state = load_state()
+    groups: dict[str, dict[str, Any]] = {}
+    for block in state.blocks:
+        for tx in block.txs:
+            if tx.get("type") != NEGOTIATION_TX:
+                continue
+            result = tx.get("result") if isinstance(tx.get("result"), dict) else {}
+            envelope = result.get("envelope")
+            if not isinstance(envelope, dict):
+                continue
+            conflict_id = str(envelope.get("conflict_id") or "cf_unknown")
+            group = groups.setdefault(
+                conflict_id,
+                {
+                    "conflictId": conflict_id,
+                    "engine": result.get("engine"),
+                    "fallback": None,
+                    "messages": [],
+                    "blocks": [],
+                    "latencyMs": None,
+                },
+            )
+            group["messages"].append(envelope)
+            group["blocks"].append({"height": block.height, "tsMs": block.ts_ms, "hash": block.hash})
+            if "fallback" in result:
+                group["fallback"] = result["fallback"]
+    ordered = sorted(groups.values(), key=lambda group: group["blocks"][0]["height"])
+    for group in ordered:
+        group["latencyMs"] = group["blocks"][-1]["tsMs"] - group["blocks"][0]["tsMs"]
+    return {"negotiations": ordered, "chainValid": _chain_fault(state) is None}
 
 
 # ------------------------------------------- frontend adapter read endpoints

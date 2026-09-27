@@ -1,9 +1,9 @@
 # Milestone 3 — Backend Ledger + Server State (phase 1)
 
 Status: **phase 1 complete; phase 2 underway — 3-of-3 Proof-of-Authority consensus
-(B2) and the event/query surface (B3) landed.** All four gates green (see §Verification).
-The rest of phase 2 (LLM agents, weather poller, server-side simulation tick) is not
-started — see §Remaining.
+(B2), the event/query surface (B3) and the §8 negotiation protocol (B4) landed.** All four
+gates green (see §Verification) and `ruff check server/` is clean. The rest of phase 2
+(HKO weather poller, server-side simulation tick) is not started — see §Remaining.
 
 > This document was missing until 2026-09-27 even though the handover brief cited it.
 > It is written now to close that gap.
@@ -195,6 +195,40 @@ prose. A log line is not a delivery surface."*
   FR-B8 explicitly permits ("`GET /events` (WebSocket/SSE)") and which a browser `EventSource`
   consumes natively.
 
+### 9. Negotiation protocol — engine reviewed, wired, anchored on-chain (phase 2 — B4)
+
+PRD §8 (FR-N1..FR-N8) was the largest remaining M3 item. The engine in `server/agents.py` predates
+this entry: the **PHASE 1 audit of the third orchestration run found it untracked, unwired, unprobed
+and unreferenced** (`.workbuddy-ai/b4/thread.md` held one word: `[BLOCKED]`). It is now reviewed,
+fixed, probed and wired.
+
+- **Five defects fixed before the module was allowed near the chain.** (1) `ALTITUDE_YIELD` climbed
+  when the drone was BELOW its peer — reducing the vertical gap its own docstring promised to widen;
+  the shared `yield_direction()` helper now drives both the simulation and the §8.5 envelope, and
+  FR-N5's mandated unconditional `+30 m` tie-break deliberately does NOT use it. (2) `to_alt_m`
+  always advertised `+30`, so the envelope could **contradict the simulated effect** (a below-peer
+  drone was told it would climb into the peer). (3) The COUNTER-alternative rule compared against
+  `payload["proposed"]`, a key no builder ever set — **dead code, FR-N4 unenforced**; the pair-aware
+  `validate_exchange()` now enforces same `conflict_id`, swapped endpoints, ACCEPT-echoes-proposal
+  and COUNTER-differs-from-proposal. (4) `build_resolution` silently attributed an unknown executor
+  to the peer; it raises instead. (5) The LLM path derived `fallback` from prose; it now uses an
+  explicit flag AND validates the LLM exchange before accepting it — an invalid one falls back to
+  the deterministic policy (FR-N8).
+- **`POST /negotiate`** runs the engine and anchors **three consecutive blocks, one per message**
+  (proposal → response → resolution) BEFORE the caller sees the outcome — FR-N6's "on the chain
+  before execution" and S25's "acted upon only after confirmation", message by message. Each block
+  is quorum-verified before `save_state()`; a failure pops it and returns 500. A conflict-free pair
+  anchors **nothing** — an empty exchange is not an event.
+- **`GET /negotiations`** replays anchored exchanges from the chain, grouped by `conflict_id`, with
+  `latencyMs` computed from **block** timestamps — the S22 evidence, not envelope prose.
+- **`NEGOTIATION` is server-minted and deliberately absent from `TXType`** (documented beside
+  `GENESIS`), so it can never become an advertised-but-rejected type; a client submission is refused
+  by the schema (422), not at runtime (400).
+- **The FR-B6 branch is covered:** on a corrupt chain `/negotiate` refuses with **409**, records a
+  durable tamper event with `source=NEGOTIATION`, appends nothing, and `/negotiations` still answers
+  with `chainValid:false`.
+- **No new dependencies.** `server/main.py` is now **ruff-clean** (the 9 pre-existing `E501`s fixed).
+
 ## Verification (2026-09-27)
 
 > Current numbers are in **§Phase 2 — B3 verification** below. The table here is the
@@ -214,6 +248,24 @@ prose. A log line is not a delivery surface."*
 `probe_api.py` is self-contained: it kills any listener on `:8000`, re-seeds from
 scratch, starts the server itself, and asserts absolute seed balances — so it is
 repeatable.
+
+### Phase 2 — B4 verification
+
+Frozen revisions, md5-checked before and after every mutation: `server/agents.py`
+`71c1b2166ef5af6d8507fe718bbece27`; `server/main.py` `9c2247d99a173097a6085209f38987d8`
+(both LF-only).
+
+| Gate / probe | Result |
+|---|---|
+| `tsc -b` · `vite build` · `eslint . --max-warnings=0` · `vitest run` | 0 · 0 · 0 · **128/128 (21 files)** |
+| `python server/probe_agents.py` (new — no server required) | **ALL CHECKS PASSED**, 40 checks; FR-N7 measured ≈ **0.42 ms** per exchange |
+| `python server/probe_api.py` (official runner, sole runner on `:8000`) | **ALL CHECKS PASSED / exit 0** — 14 new negotiation checks incl. the corrupt-chain refusal |
+| `bun scripts/probe_lifecycle.ts` · `probe_routes.ts` · `probe_m3_seam.ts` | ALL PASS · **42/42** · ALL PASS |
+| `ruff check server/` | **0 errors** (was 15) |
+| **ACID TEST A** — old yield direction + `validate_exchange` neutered | **10 FAILED / exit 1**, incl. `to_alt_m=100.0 simulated=130.0` |
+| **ACID TEST B** — anchoring loop mutated to append only the proposal | **4 FAILED / exit 1** — `[2]`, `2 -> 3`, empty replay group |
+
+Both mutated revisions were restored byte-for-byte (md5 match) before the final green run.
 
 ### Phase 2 — B3 verification
 
@@ -283,8 +335,8 @@ relax it.
 
 ## Remaining for M3 (phase 2)
 
-1. LLM agent negotiation protocol (PRD §8): conflict detection, fixed maneuver menu,
-   two rounds, deterministic tie-break, ≤5 s budget. **← the largest remaining item**
+1. ~~LLM agent negotiation protocol (PRD §8): conflict detection, fixed maneuver menu,
+   two rounds, deterministic tie-break, ≤5 s budget.~~ **Delivered as B4** — see §9 below.
 2. HKO weather poller with a 5-minute cache, `STALE` flag and typhoon gate (§5.2).
 3. Move the **simulation tick** server-side (the fleet/mission *data* is now seeded; the
    tick itself is still computed client-side).

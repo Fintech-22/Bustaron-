@@ -1833,4 +1833,97 @@ Reasoning: Bullet 2 was the only north-star bullet held below MET; it is now MET
 Action: none. B3 closed PASS; the backend queue may advance.
 ```
 
+---
+
+# ══ ORCHESTRATION RUN 3 — PHASE 1 AUDIT, THEN B4: §8 NEGOTIATION ENGINE WIRED + ANCHORED ══
+
+> Hierarchy per the run brief: Overview (system architect) → specialised 2-agent sub-teams
+> (Creator implements; Reviewer reviews the same work in lockstep, catching edge cases and
+> math defects during implementation) → Overseer sign-off against the PRD. The run opened with
+> the mandated PHASE 1 current-state audit.
+
+## [OVERVIEW] PHASE 1 — the exact baseline, established by RUNNING (2026-09-27)
+
+Four gates on the tree **as found**: `tsc -b` 0 · `vite build` 0 · `eslint . --max-warnings=0` 0 ·
+`vitest run` **128/128 (21 files)**. Probes: `probe_lifecycle` ALL PASS · `probe_routes` 42/42 ·
+`probe_m3_seam` 7/7 · `python server/probe_api.py` **ALL CHECKS PASSED, exit 0** (87 `check()` sites).
+
+**Headline finding — `server/agents.py`: 895 lines implementing PRD §8 (FR-N1…FR-N8), UNTRACKED,
+UNWIRED, UNPROBED, UNTESTED.** It compiles and imports cleanly; nothing in the repo referenced it;
+`main.py` had no `/negotiate`; `.workbuddy-ai/b4/thread.md` held one word: `[BLOCKED]`. This is the
+**fourth** instance of the repo's signature failure mode — a coherent increment no gate can see
+(after the 15-file STEP 0 increment, the B3 false-green probe, and the T9 layer drop).
+
+Other findings that changed the plan: `ruff check server/` was **RED with 15 errors** (9 pre-existing
+`E501` in `main.py`, 6 in the untracked engine) while `ruff.toml` + `README.md` now exist;
+`pytest` 9.1.1 is installed with **no suite** (S91 still open); `placeBid` still emits **no ledger
+row** (audit §3.3 confirmed by grep); **no firmware, no ESP32, no 3D tab, no HKO poller** — those are
+untouched M4/M5/M6 territory. `code_search` (ripgrep) is broken in this build — use shell `grep`.
+
+## [SUB-TEAM:B4-A · engine hardening + pure-logic probe]
+
+**Creator.** Five real defects fixed in the untracked engine, plus a new no-server probe
+(`server/probe_agents.py`, 40 checks) and a full ruff cleanup. Details in the vault note
+[[b4-negotiation-engine-wired-and-anchored]]. The five: (1) `ALTITUDE_YIELD` climbed when the drone
+was BELOW its peer, reducing separation — the opposite of its own documented intent; (2)
+`build_proposal.to_alt_m` always advertised `+30` while the simulation moved ±30, so the §8.5
+envelope **lied about the effect**; (3) the COUNTER-alternative rule compared against
+`payload["proposed"]`, a key no builder ever sets — **dead code, FR-N4 unenforced**; (4)
+`build_resolution` silently attributed an unknown executor to the peer; (5) the LLM path derived
+`fallback` from prose (`detail.startswith("FR-N5")`). Fixes: one shared `yield_direction()` helper
+feeding both simulation and envelope; pair-aware `validate_exchange()`; executor validation that
+raises; an explicit fallback flag; the LLM may only speak through a **valid** exchange or it falls
+back (FR-N8).
+
+**Reviewer — acid test A (the discriminating proof).** With the old yield direction restored and
+`validate_exchange` neutered, the probe reports **10 CHECK(S) FAILED, exit 1**, including the
+emblematic `to_alt_m=100.0 simulated=130.0`. Restored revision is md5 byte-identical
+(`agents.py` `71c1b2166ef5af6d8507fe718bbece27`) and green again.
+
+## [SUB-TEAM:B4-B · chain anchoring + HTTP surface]
+
+**Creator.** `POST /negotiate` runs the engine and anchors **three consecutive blocks — one per
+message (proposal, response, resolution) — BEFORE the caller sees anything** (FR-N6: every message on
+the chain before execution; S25: acted upon only after confirmation). Each block is quorum-verified
+before `save_state()`; a failure pops it and 500s (same invariant as `submit_tx`). A conflict-free
+pair **anchors nothing**. `GET /negotiations` replays anchored exchanges from the chain grouped by
+`conflict_id`, with `latencyMs` computed from **block** timestamps — the S22 evidence, not prose.
+`NEGOTIATION` is server-minted and deliberately **absent from `TXType`** (documented like `GENESIS`),
+so it cannot become the next advertised-but-rejected type; the probe asserts a client submission gets
+**422 from the schema, not a runtime 400**. The corrupt-chain branch (FR-B6) refuses with 409,
+records a durable tamper event with `source=NEGOTIATION`, and appends nothing.
+
+**Reviewer — acid test B.** With the anchoring loop mutated to append only the proposal:
+**4 CHECK(S) FAILED, exit 1** — `[2]` (one block), `2 -> 3` (grew by one, not three), and the replay
+group empty. Restored `main.py` md5 `9c2247d99a173097a6085209f38987d8` byte-identical; probe green.
+
+**Verification on the frozen revision:** `probe_api.py` ALL CHECKS PASSED / exit 0 (+14 negotiation
+checks, incl. the corrupt-chain refusal) · `probe_agents.py` ALL CHECKS PASSED · `probe_lifecycle`
+ALL PASS · `probe_routes` 42/42 · `probe_m3_seam` ALL PASS · gates 0 · 0 · 0 · **128/128** ·
+`ruff check server/` **0 errors** (was 15).
+
+## [SUPERVISOR] SCOPE RULINGS (recorded, not buried)
+
+- **S17, S19, S20, S21, S22, S23 = MET** (engine + server behaviour, each with a named assertion).
+- **S18 = NOT MET** — the envelope is structurally correct but `sig_drone` is `""`; blocked on the
+  ESP32 key pair (S7) ⇒ M4. **S15** (agent parses its mission from genesis) not attempted.
+- **S25 = MET** for engine-produced exchanges. **PARTIAL by the letter** for drone-originated
+  submissions — deferred and named, along with (b) live `NEGOTIATION_MESSAGE` SSE frames (S31) and
+  (c) the still-missing HKO poller, which keeps every snapshot-less negotiation honestly
+  `weather_stale: true`.
+
+## [OVERVIEW:team-lead] NORTH STAR CHECK — B4
+
+```
+NORTH STAR CHECK
+Status: on track
+Reasoning: bullet 5 (every operational record anchored on-chain) gained the negotiation
+  protocol itself — proposals, responses and resolutions are now blocks, replayable from the
+  chain, not in-memory transcript. Bullet 2 (tamper-evidence real) is untouched and still green,
+  and the new /negotiate path inherits the FR-B6 refusal (409, nothing appended, durable event).
+  Bullet 4 (2D landing for both roles) is unaffected — this increment is server-side only.
+Action: none. B4 closed PASS. Deferred items are named above; S91 (pytest suite) and the 3D tab
+  remain the largest untouched non-M4 gaps.
+```
+
 
