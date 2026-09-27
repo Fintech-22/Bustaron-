@@ -1,8 +1,9 @@
 # Milestone 3 — Backend Ledger + Server State (phase 1)
 
 Status: **phase 1 complete; phase 2 underway — 3-of-3 Proof-of-Authority consensus
-(B2) landed.** All four gates green (see §Verification). The rest of phase 2
-(agents, streaming, weather) is not started — see §Remaining.
+(B2) and the event/query surface (B3) landed.** All four gates green (see §Verification).
+The rest of phase 2 (LLM agents, weather poller, server-side simulation tick) is not
+started — see §Remaining.
 
 > This document was missing until 2026-09-27 even though the handover brief cited it.
 > It is written now to close that gap.
@@ -115,15 +116,18 @@ M3 phase 1 was a single-process **hash chain** with no signature scheme, so PRD 
   reject it. Each vector must make `chainValid` false AND leave the chain height
   unchanged: the server REPORTS a tampered chain as invalid, it never silently re-seeds
   or rewrites it.
-- **Tamper reporting (PRD S4 — PARTIAL).** The single detection point is `_chain_fault()`:
-  on the first fault it logs the literal token **`TAMPER_DETECTED`** naming the offending
-  block height, and `/api/health` exposes `chainValid`, `tamperDetected`, `chainFault` and
-  `tamperEventCount`. `status` is LIVENESS only, so a poller must read
-  `chainValid`/`tamperDetected`, not `status`. A refused write is additionally recorded as a
-  **durable** entry in `State.tamper_events` (persisted with the rest of the state) — a
-  tamper cannot be recorded as a block, since that would append to the very chain just
-  declared untrustworthy. The `GET /events` **stream** is deliberately left to S6, so S4 is
-  **PARTIAL, not MET**.
+- **Tamper reporting (PRD S4 — MET as of B3).** The single detection point is `_chain_fault()`,
+  which now returns a `ChainFault` carrying a stable machine-readable `code`
+  (`STATE_FILE_UNREADABLE` / `BLOCK_LINK_BROKEN` / `BLOCK_HASH_MISMATCH` / `QUORUM_INVALID`)
+  beside the human prose. `/api/health` exposes `chainValid`, `tamperDetected`, `chainFault`,
+  **`chainFaultCode`**, **`chainFaultHeight`**, `tamperEventCount` and **`eventSubscribers`**.
+  `status` is LIVENESS only, so a poller must read `chainValid`/`tamperDetected`, not `status`.
+  A refused write is additionally recorded as a **durable** entry in `State.tamper_events`
+  (persisted with the rest of the state) — a tamper cannot be recorded as a block, since that
+  would append to the very chain just declared untrustworthy. Each durable record is delivered
+  to clients as `{id, type:"TAMPER_DETECTED", atMs, source, faultCode, height, fault}`, so the
+  type is selectable **without string-matching prose**, and `GET /events` pushes it to a
+  connected client within one append cycle. That is what closes S4.
 - **An invalid chain cannot be extended (PRD FR-B6).** `POST /chain/tx` recomputes the
   WHOLE chain before appending and refuses with `409` (`ChainIntegrityError`, whose body
   carries `tamperDetected: true`) when it is invalid. The `apply_*` mutation never runs, so
@@ -162,7 +166,39 @@ tampering. Only a genuine **v1 legacy** file is re-seeded (above). `seed_if_empt
 any state carrying `load_error`, and `load_error` is declared `exclude=True` so it can
 never be serialised back to disk.
 
+### 8. Event stream + machine-readable event type (phase 2 — B3)
+
+Closes **S6** and lifts **S4** from PARTIAL to MET. The acceptance record had held S4 back
+for one reason: *"`GET /events` is unimplemented and the durable record carries no
+machine-readable event type, so `TAMPER_DETECTED` is selectable only by string-matching
+prose. A log line is not a delivery surface."*
+
+- **Machine-readable type at the source.** `_chain_fault()` returns a `ChainFault`
+  (`code` + `height` + prose) instead of a bare string, so the *single* detection point emits
+  a stable token. Durable records are `{id, type:"TAMPER_DETECTED", atMs, source, faultCode,
+  height, fault}`.
+- **Legacy records are upgraded ON READ** by `_event_envelope()`. The evidence file is never
+  rewritten merely to become readable — consistent with the corrupt-file rule above, which
+  forbids writing precisely when the file is suspect.
+- **`GET /events`** is a `StreamingResponse(media_type="text/event-stream")` over an async
+  generator: replay the durable history → emit an SSE **comment frame** `: replay-complete`
+  as an *exact* history/live boundary → push new events live. The marker is deliberately not
+  a timer: a late subscriber's whole replay arrives in one TCP segment, so a "quiet period"
+  drain can silently mistake buffered replay for a live event.
+- **Fan-out** goes through `EventBroker`. Because `submit_tx` is a sync `def` that FastAPI
+  runs in a threadpool, publish crosses into the loop via `loop.call_soon_threadsafe`, and is
+  a guarded no-op when no loop is bound (the import-time `_record_tamper_event` path).
+- **Delivery guarantee: AT-LEAST-ONCE.** Frames carry an SSE `id:`; `Last-Event-ID` resume is
+  best-effort (an unknown/evicted id replays everything rather than nothing). Clients must
+  deduplicate on `id`.
+- No new dependencies — stdlib `asyncio`/`contextlib`/`uuid` only. Delivered as **SSE**, which
+  FR-B8 explicitly permits ("`GET /events` (WebSocket/SSE)") and which a browser `EventSource`
+  consumes natively.
+
 ## Verification (2026-09-27)
+
+> Current numbers are in **§Phase 2 — B3 verification** below. The table here is the
+> phase-1/B2 snapshot and is kept as a historical record.
 
 | Gate / probe | Result |
 |---|---|
@@ -178,6 +214,26 @@ never be serialised back to disk.
 `probe_api.py` is self-contained: it kills any listener on `:8000`, re-seeds from
 scratch, starts the server itself, and asserts absolute seed balances — so it is
 repeatable.
+
+### Phase 2 — B3 verification
+
+Run by the Supervisor on a **frozen revision**, md5-checked before *and* after every
+mutation (`server/main.py` `d21079a3…` LF-only; `server/probe_api.py` `f3f55d2d…`).
+
+| Gate / probe | Result |
+|---|---|
+| `python server/probe_api.py` (sole runner, `:8000`, pristine) | **92 PASS / 0 FAIL / exit 0** |
+| same, ×3 consecutive runs, label sets diffed | **92 / 92 / 92 — identical** |
+| **acid test** — `EventBroker.publish()` → early `return` | **6 FAILED / exit 1** — exactly the six live assertions; the other 19 S6 lines still PASS |
+| `tsc -b` · `eslint . --max-warnings=0` · `vitest run` | 0 · 0 · **128 passed / 21 files** |
+| `bun scripts/probe_lifecycle.ts` · `probe_routes.ts` · `probe_m3_seam.ts` | 38/38 · 42/42 · **7/7** |
+| real browser `EventSource` (`:4173` → `:8000`) | `onopen`, no error; received the live `{type:"TAMPER_DETECTED", faultCode:"BLOCK_HASH_MISMATCH", height:1}` |
+
+The acid test is the load-bearing evidence: **a green probe is not evidence until it has been
+watched going red.** Round 1 of B3 shipped a probe that printed `ALL CHECKS PASSED` with live
+delivery *completely disabled*; the six live assertions now fail when it is dead and pass when
+it is alive. The `: replay-complete` boundary assertion carries that discrimination — do not
+relax it.
 
 ### Phase 2 — B2 verification
 
@@ -209,24 +265,37 @@ repeatable.
   implemented (`apply_settle` / `apply_file_approval`) and re-advertised;
   `UNIMPLEMENTED_TX_TYPES` holds only `GENESIS`, which is minted at seed time and is
   not client-submittable.
-- **PRD S4 is PARTIAL, not MET.** Tampering is now *detected and reported*: `_chain_fault()`
-  logs `TAMPER_DETECTED` naming the offending block height, `/api/health` exposes
-  `chainValid` / `tamperDetected` / `chainFault` / `tamperEventCount`, a refused write leaves
-  a durable entry in `State.tamper_events`, and `POST /chain/tx` refuses to extend a corrupt
-  chain (FR-B6). The `GET /events` **stream** — the remaining part of S4 — is deliberately
-  deferred to S6, so S4 is recorded as **PARTIAL**.
-- **Fleet/mission data stays client-side.** `/api/fleet` and `/api/missions` exist but
-  serve `state.drones` / `state.missions`, which are never seeded — the frontend still
-  returns mock data for these. Moving them server-side is phase-2 work.
+- ~~**PRD S4 is PARTIAL, not MET.**~~ **Superseded by B3 (commit `511dd66`) — S4 is now MET.**
+  Tampering is detected *and observable*: `_chain_fault()` returns a `ChainFault` whose
+  `code` is a stable machine-readable token (`STATE_FILE_UNREADABLE` / `BLOCK_LINK_BROKEN` /
+  `BLOCK_HASH_MISMATCH` / `QUORUM_INVALID`); durable records carry
+  `type:"TAMPER_DETECTED"` + `faultCode` + `height`; and `GET /events` is a live SSE stream
+  that replays history and then pushes a new event **within one append cycle**, verified
+  end-to-end in a real browser `EventSource`. The original deferral note is kept below for
+  the record, because the reason it was held back is what B3 had to answer.
+  <br>*(as recorded before B3)* `GET /events` **stream** was deliberately deferred to S6, so
+  S4 was recorded as PARTIAL. A log line is not a delivery surface.
+- ~~**Fleet/mission data stays client-side.**~~ **Partly superseded.** `/api/fleet` and
+  `/api/missions` now serve **seeded** `SEED_DRONES` / `SEED_MISSIONS` rows, so the endpoints
+  are no longer vacuous and north-star bullet 5 is satisfied for them. **Still open:** the
+  *simulation tick* is still computed client-side (`M3Backend.simulateTick` delegates to the
+  mock service) — moving the tick server-side remains phase-2 work.
 
 ## Remaining for M3 (phase 2)
 
 1. LLM agent negotiation protocol (PRD §8): conflict detection, fixed maneuver menu,
-   two rounds, deterministic tie-break, ≤5 s budget.
-2. WebSocket `/events` stream (S6).
-3. HKO weather poller with a 5-minute cache, `STALE` flag and typhoon gate (§5.2).
-4. Move fleet/mission data server-side so the simulation tick comes from the API.
-5. Ledger coverage: `placeBid` and `fileApprovalRequest` currently emit no ledger row.
+   two rounds, deterministic tie-break, ≤5 s budget. **← the largest remaining item**
+2. HKO weather poller with a 5-minute cache, `STALE` flag and typhoon gate (§5.2).
+3. Move the **simulation tick** server-side (the fleet/mission *data* is now seeded; the
+   tick itself is still computed client-side).
+4. Ledger coverage: `placeBid` and `fileApprovalRequest` currently emit no ledger row.
 
-> Done since this list was first written: the 3-of-3 PoA consensus (B2) and the
-> `AUCTION_SETTLE` / `APPROVAL_FILE` endpoints, the latter in commit `f37f974`.
+> Done since this list was first written: the 3-of-3 PoA consensus (B2), the
+> `AUCTION_SETTLE` / `APPROVAL_FILE` endpoints (`f37f974`), the server-side seeding of
+> fleet/mission rows (STEP 0, `e961303`), and the `/events` event stream + machine-readable
+> event type (B3, `511dd66`) — which closes S6 and lifts S4 from PARTIAL to MET.
+>
+> Note on item 2 of the original list ("WebSocket `/events` stream (S6)"): delivered as
+> **SSE** rather than WebSocket. FR-B8 reads "`GET /events` (WebSocket/SSE)" — SSE is the
+> permitted alternative, needs no new dependency, and is what a browser `EventSource`
+> consumes natively. Verified with a real `EventSource` client.
