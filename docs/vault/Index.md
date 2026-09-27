@@ -56,6 +56,10 @@ related: []
 
 - [[README]] — BUSTARON Vault · status: stable
 
+### Unknown (1)
+
+- [[t12-hko-weather-tab-3node-poa-3d-view]] — T12 — HKO weather evidence tab, real 3-node PoA, 3D View
+
 ## Folder convention
 
 - `decisions/` — Decision notes
@@ -64,4 +68,4 @@ related: []
 - `bugs/` — Bug notes
 - `sessions/` — Session notes
 
-_19 note(s) · vault: `docs/vault`_
+_20 note(s) · vault: `docs/vault`_

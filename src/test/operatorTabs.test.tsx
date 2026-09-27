@@ -28,6 +28,9 @@ const tabs: { label: string; heading: RegExp }[] = [
   { label: 'Fleet', heading: /^fleet$/i },
   { label: 'Analytics', heading: /^analytics$/i },
   { label: 'Alerts', heading: /^alerts$/i },
+  // PRD S111 now names EIGHT operator entries; the 3D View tab carries the HKO
+  // weather evidence panel (§5.2) alongside the Cesium scene entry.
+  { label: '3D View', heading: /^weather$/i },
 ];
 
 describe('operator console tabs (PRD S111)', () => {
@@ -53,7 +56,7 @@ describe('operator console tabs (PRD S111)', () => {
     }
   });
 
-  it('keeps the sidebar disclosure working with seven-plus entries', () => {
+  it('keeps the sidebar disclosure working with eight operator entries', () => {
     render(<App />);
 
     const sidebar = screen.getByRole('complementary', { name: /primary navigation/i });
@@ -65,7 +68,7 @@ describe('operator console tabs (PRD S111)', () => {
 
     const nav = document.getElementById('sidebar-nav-sections');
     expect(nav).not.toBeNull();
-    // Operator role sees the seven operator entries (the two admin entries are hidden).
-    expect(nav?.querySelectorAll('button')).toHaveLength(7);
+    // S111: eight operator entries (the two admin entries are hidden).
+    expect(nav?.querySelectorAll('button')).toHaveLength(8);
   });
 });

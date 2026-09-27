@@ -47,9 +47,20 @@ export interface DashboardStore extends AppState {
   lastError: string | null;
   /** Derived real-time alert feed (PRD S115); acknowledgements persist by id. */
   alerts: Alert[];
+  /**
+   * PRD S126/S127: the full-screen 3D View is an OVERLAY over whichever 2D
+   * section is active, not a section of its own. That is what makes S129's
+   * "single button to exit" restore the exact dashboard you left — for both
+   * roles — without a second navigation state to keep in sync.
+   */
+  threeDView: boolean;
   initialize: () => void;
   setRole: (role: UserRole) => void;
   navigate: (section: NavSection) => void;
+  /** PRD S126: opens the 3D View over the current 2D dashboard. */
+  openThreeDView: () => void;
+  /** PRD S129: the single exit back to the 2D dashboard. */
+  closeThreeDView: () => void;
   selectDrone: (id: string) => void;
   toggleLayer: (layer: LayerId) => void;
   /** PRD §11.3.3: impersonate an operator in the operator console. */
@@ -125,6 +136,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   routeZoneHits: [],
   lastError: null,
   alerts: initialAlerts,
+  threeDView: false,
   initialize: (): void => {
     const backend: DataBackend = resolveBackend(get().backendId);
     const loadedState: AppState = backend.loadInitialState();
@@ -142,6 +154,8 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       routeZoneHits: [],
       lastError: null,
       alerts: deriveAlerts(loadedState.drones, loadedState.weatherAlerts, loadedState.lastUpdatedIso),
+      // A backend swap (hydrate) must never leave a stale 3D scene over fresh data.
+      threeDView: false,
     });
   },
   setRole: (role: UserRole): void => {
@@ -153,9 +167,11 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     } else {
       nextSection = adminOnlySections.includes(currentSection) ? 'operations' : currentSection;
     }
-    set({ activeRole: role, activeSection: nextSection });
+    set({ activeRole: role, activeSection: nextSection, threeDView: false });
   },
   navigate: (section: NavSection): void => set({ activeSection: section }),
+  openThreeDView: (): void => set({ threeDView: true }),
+  closeThreeDView: (): void => set({ threeDView: false }),
   selectDrone: (id: string): void => {
     const droneExists: boolean = get().drones.some((drone: Drone): boolean => drone.id === id);
     if (droneExists) {

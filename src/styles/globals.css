@@ -1110,6 +1110,236 @@ h3 {
   margin: var(--space-2) var(--space-3);
 }
 
+/* --- 3D View overlay (PRD §11.4, S126–S129) --- */
+.three-d-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+.three-d {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.three-d__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-panel);
+}
+
+.three-d__eyebrow {
+  margin: 0;
+  font-size: var(--font-size-2xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-subtle);
+}
+
+.three-d__title {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-xl);
+}
+
+.three-d__canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: #07101a;
+}
+
+.three-d__canvas > * {
+  width: 100%;
+  height: 100%;
+}
+
+.three-d__panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-panel);
+}
+
+.three-d__panel .nav-group__label {
+  flex-basis: 100%;
+}
+
+.layer-button {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  color: var(--color-muted);
+  text-align: left;
+}
+
+.layer-button strong {
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}
+
+.layer-button:hover {
+  border-color: var(--color-border-strong);
+}
+
+.layer-button[aria-pressed='true'] {
+  border-color: var(--color-cyan);
+  color: var(--color-text);
+}
+
+.layer-button:disabled {
+  opacity: 0.55;
+}
+
+.three-d__status {
+  flex-basis: 100%;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.three-d__note {
+  color: var(--color-amber);
+}
+
+.three-d__error {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  gap: var(--space-2);
+  max-width: min(520px, 90vw);
+  padding: var(--space-4);
+  border: 1px solid var(--color-red);
+  border-radius: var(--radius-md);
+  background: rgba(5, 8, 12, 0.94);
+}
+
+.three-d__error p {
+  margin: 0;
+}
+
+.three-d__exit {
+  flex-shrink: 0;
+}
+
+/* --- HKO Weather tab (PRD §5.2, S35–S40) --- */
+.weather-panel {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.weather-panel__primary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.weather-panel__value {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+}
+
+.weather-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.weather-panel__grid div {
+  display: grid;
+  gap: 2px;
+}
+
+.weather-panel__grid dt {
+  font-size: var(--font-size-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-subtle);
+}
+
+.weather-panel__grid dd {
+  margin: 0;
+  font-size: var(--font-size-md);
+}
+
+.weather-panel__grid dd[data-gate='blocked'] {
+  color: var(--color-red);
+  font-weight: 700;
+}
+
+.weather-panel__grid dd[data-gate='open'] {
+  color: var(--color-radar);
+}
+
+.weather-panel__warnings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.weather-panel__warnings li {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-amber);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+}
+
+.weather-panel__anchor code {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-2xs);
+}
+
+.weather-panel__offline {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-amber);
+  border-radius: var(--radius-md);
+  background: rgba(15, 23, 42, 0.54);
+}
+
+.weather-panel__offline p {
+  margin: 0;
+}
+
+.weather-panel__checks {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+}
+
+.weather-panel__checks li::before {
+  content: '— ';
+  color: var(--color-amber);
+}
+
 /* --- Alert feed (PRD S115) --- */
 .alert-list {
   display: grid;

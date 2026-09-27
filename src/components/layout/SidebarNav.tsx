@@ -76,6 +76,13 @@ const navItems: NavItem[] = [
     icon: 'ALR',
   },
   {
+    section: 'weather',
+    label: '3D View',
+    description: 'CesiumJS city scene · HKO weather evidence',
+    role: 'both',
+    icon: '3DV',
+  },
+  {
     section: 'approvals',
     label: 'Approvals Queue',
     description: 'Escrowed flight requests',

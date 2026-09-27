@@ -1926,4 +1926,57 @@ Action: none. B4 closed PASS. Deferred items are named above; S91 (pytest suite)
   remain the largest untouched non-M4 gaps.
 ```
 
+-----------------------------------------------------------------------------
+## T12 — W1/W2/W3: HKO weather evidence tab + real 3-node PoA topology + 3D View (2026-09-27)
 
+Two session runs; the first died mid-W3 (files intact, nothing committed), the second resumed
+from the on-disk state and drove everything to green. Verified at commit time.
+
+### What landed (all three work orders from the same request)
+- **W1 HKO poller (S35–S40)** — server/weather.py: rhrread + latest_10min_wind.csv + warnsum
+  parsers (real HKO schemas, live-verified), 5-min TTL cache in server/data/weather_cache.json,
+  STALE flag with honest ageS, typhoon dispatch gate (Signal >= 8 refuses; STALE never blocks),
+  wind_cost_factor for S36, WEATHER tx anchored at genesis (S40, hash recorded; honest null when
+  no cache existed). GET /api/weather exposes snapshot + dispatchBlocked + pathCostFactor +
+  genesisWeather + genesisMatchesCache. probe_weather.py: 27 checks, ALL PASS, acid-tested
+  (gate mutation → exactly 1 red, restored byte-exact).
+- **W2 real 3-node PoA (S3, §4.4)** — chain_node.py + agent_node.py + json_http.py +
+  topology.py: the PRD process topology actually runs — `python -m server.topology` spawns
+  chain nodes :8201–8203 (per-process Ed25519 keys) + agent nodes :8101–8102, main.py requests
+  REMOTE quorum signatures and refuses to boot when nodes cannot deliver 3-of-3
+  (no silent local-key fallback). probe_topology.py: 30 checks, ALL PASS, acid-tested
+  (forced fallback → 8 red, chain honestly reports QUORUM_INVALID, restored byte-exact).
+- **W3 3D View tab (S104/S111/S126–S129, §11.4 FR-3D-V1..V7) + HKO client tab** —
+  CesiumJS 1.131 lazy-CDN loader (cesiumLoader.ts), scene builder (cesiumScene.ts) with RFZ
+  volumes 0–400 m, drones at real altitude, corridors, dashed planned trail, weather cells,
+  skycell traffic volumes; provider ladder open3dhk → ion → osm implemented literally and
+  reported in a status line (no key ≠ silent failure — the buildings toggle disables itself).
+  Overlay semantics: full-screen over the mounted 2D dashboard; single Exit restores the exact
+  section (both roles). Shared layer toggles write through to the same store flags the 2D map
+  uses. New WeatherPanel tab renders the server snapshot; offline it names which S-criteria are
+  unverifiable instead of going blank. Sidebar S111: 7 → 8 operator entries (10 admin); TopBar
+  3D button both roles; nav type + TopBar/panel titles updated. 13 new tests (threeDView 9,
+  hkoWeather 4) against a fake Cesium; operatorTabs count updated 7 → 8.
+
+### Verification at commit time
+- Gates: tsc -b 0 · vite build ✓ · eslint --max-warnings=0 clean · vitest **141/141 (23 files)**.
+- Probes: probe_weather ALL PASS · probe_topology ALL PASS · probe_api ALL PASS ·
+  probe_lifecycle 38 PASS · probe_routes 42/42 · probe_m3_seam ALL PASS · ruff clean.
+- Live (preview :4173, API :8000): 3D overlay builds real scene (Cesium 1.131, 3 RFZ volumes,
+  594 skycells, 2 drones, 3 routes, OSM tiles streaming); weather toggle flips entity
+  visibility via the real store; Exit returns to the 2D map; Weather tab renders the live HKO
+  snapshot (31 km/h Ngong Ping, gust 42, 28 °C, 80 %, ×1.26 cost factor, S38 open, S40 anchor
+  matching the current cache); S111 = 8 operator / 10 admin sidebar entries; console clean.
+
+### Honesty notes
+- Open3Dhk/Ion keys are NOT configured in this environment: the 3D scene runs the `osm`
+  ladder rung (ellipsoid terrain, no city model) and SAYS so in its status line. S96/S103
+  remain open until a LandsD key is provisioned — the code path is implemented and degrades
+  by design, but has not been exercised against the real tileset.
+- `__bustaron3d` window handle exposes status/counts/layers for live verification (same
+  pattern as `__bustaronMap`).
+- Terrain toggle rebuilds the scene (Cesium constructs terrain at Viewer build); all other
+  toggles paint the live scene without rebuild.
+- The weather tab polls every 60 s (display freshness); the SERVER cache TTL remains 5 min
+  (S35) — the client does not bypass the server's poller.
+```

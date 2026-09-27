@@ -29,6 +29,7 @@ import hashlib
 import logging
 import os
 from collections.abc import Mapping
+from pathlib import Path
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
@@ -167,21 +168,125 @@ def sign_block_hash(block_hash: str) -> dict[str, str]:
     return {authority.id: authority.sign(block_hash) for authority in AUTHORITIES}
 
 
-def verify_quorum(block_hash: str, sigs: Mapping[str, str]) -> bool:
+def verify_quorum(
+    block_hash: str,
+    sigs: Mapping[str, str],
+    public_keys: Mapping[str, str] | None = None,
+) -> bool:
     """True iff `sigs` is a valid 3-of-3 quorum over `block_hash`.
 
     Requires EXACTLY the three known authority ids — an unknown, missing or extra id
     is rejected. Distinctness is structural: `sigs` is a mapping keyed by authority
     id, so three entries cannot come from one authority (a JSON object collapses
     duplicate keys on parse). Every present signature must verify.
+
+    `public_keys` overrides WHICH public keys the quorum is checked against: with the
+    §4.4 process topology the signing keys live in the node processes (`server/chain_node.py`)
+    and are published into a keys dir, so the API server verifies against those instead of
+    its own in-process authorities. `None` (the default and the single-process dev mode)
+    keeps the original behaviour. A partial key set is rejected rather than silently
+    verified against the wrong keys.
     """
     # C1: a hostile `sigs` (an int, None, a list, a str) has no `.keys()` — reject it
     # instead of raising AttributeError. Defence in depth behind the Block schema.
     if not isinstance(sigs, Mapping):
         return False
-    if set(sigs.keys()) != set(AUTHORITY_IDS):
+    if public_keys is None:
+        keys: Mapping[str, str] = {authority.id: authority.public_key_hex for authority in AUTHORITIES}
+    else:
+        keys = public_keys
+    if set(keys) != set(AUTHORITY_IDS) or set(sigs.keys()) != set(AUTHORITY_IDS):
         return False
-    return all(
-        AUTHORITY_BY_ID[authority_id].verify(block_hash, sigs[authority_id])
-        for authority_id in AUTHORITY_IDS
-    )
+    return all(verify_signature(keys[authority_id], block_hash, sigs[authority_id]) for authority_id in AUTHORITY_IDS)
+
+
+# ------------------------------------------------- per-process key files (PRD §4.4)
+#: Key-file names for the node topology. The `.key` file holds the PRIVATE seed (hex, one
+#: line); the `.pub` file holds the PUBLIC key (hex, one line) and is what the API server
+#: reads to verify a node-signed block. Private keys never leave the node process.
+KEY_FILE_NAMES: dict[str, str] = {
+    "node:admin": "node_admin.key",
+    "node:agent_a": "node_agent_a.key",
+    "node:agent_b": "node_agent_b.key",
+}
+
+
+def key_file_name(authority_id: str) -> str:
+    return KEY_FILE_NAMES[authority_id]
+
+
+def public_key_file_name(authority_id: str) -> str:
+    return KEY_FILE_NAMES[authority_id].removesuffix(".key") + ".pub"
+
+
+def authority_from_seed(authority_id: str, seed: bytes) -> Authority:
+    """Builds an `Authority` for `authority_id` from raw seed bytes."""
+    role = dict(AUTHORITY_SPECS).get(authority_id, "Unknown")
+    return Authority(authority_id, role, seed)
+
+
+def load_or_create_authority_key(
+    key_file: Path,
+    authority_id: str,
+    seed_hex: str | None = None,
+) -> Authority:
+    """Loads an authority's key from `key_file`, creating it on first run.
+
+    Resolution order: explicit `seed_hex` (TESTS ONLY — deterministic and never a
+    production path, since a seed on a command line is a published key) → the existing
+    key file → a FRESH `os.urandom(32)` seed written to the file. A random key is the
+    point: the node topology must not be forgeable from source, which is exactly what the
+    in-process dev seeds are.
+    """
+    if seed_hex is not None:
+        try:
+            seed = bytes.fromhex(seed_hex)
+        except ValueError as exc:
+            raise AuthorityConfigError(f"--seed-hex must be 64 hex characters: {exc}") from exc
+        if len(seed) != 32:
+            raise AuthorityConfigError(f"--seed-hex must decode to 32 bytes, got {len(seed)}")
+        return authority_from_seed(authority_id, seed)
+    if key_file.exists():
+        try:
+            seed = bytes.fromhex(key_file.read_text(encoding="utf-8").strip())
+        except ValueError as exc:
+            raise AuthorityConfigError(f"{key_file} is not a hex seed: {exc}") from exc
+        if len(seed) != 32:
+            raise AuthorityConfigError(f"{key_file} must hold 32 bytes of hex, got {len(seed)}")
+        return authority_from_seed(authority_id, seed)
+    seed = os.urandom(32)
+    key_file.parent.mkdir(parents=True, exist_ok=True)
+    key_file.write_text(seed.hex() + "\n", encoding="utf-8")
+    logger.warning("generated a NEW %s key at %s — back it up; it is not derivable", authority_id, key_file)
+    return authority_from_seed(authority_id, seed)
+
+
+def write_public_key(authority: Authority, keys_dir: Path) -> Path:
+    """Publishes the node's PUBLIC key so the API server can verify its signatures."""
+    keys_dir.mkdir(parents=True, exist_ok=True)
+    target = keys_dir / public_key_file_name(authority.id)
+    target.write_text(authority.public_key_hex + "\n", encoding="utf-8")
+    return target
+
+
+def read_public_keys(keys_dir: Path) -> dict[str, str] | None:
+    """All three published public keys, or **None** when the set is incomplete.
+
+    `None` means "no node topology was ever started here" and keeps the single-process
+    behaviour. An INCOMPLETE set (one or two files) also returns None — the caller decides
+    to refuse rather than verify against a partial key set, which would report a perfectly
+    good chain as tampered.
+    """
+    keys: dict[str, str] = {}
+    for authority_id in AUTHORITY_IDS:
+        path = keys_dir / public_key_file_name(authority_id)
+        if not path.exists():
+            return None
+        try:
+            value = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+        if len(value) != 64:
+            return None
+        keys[authority_id] = value
+    return keys

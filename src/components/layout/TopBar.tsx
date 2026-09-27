@@ -19,6 +19,7 @@ const sectionTitleById: Record<NavSection, string> = {
   fleet: 'Operator fleet status',
   analytics: 'Operator analytics',
   alerts: 'Operator alert feed',
+  weather: 'Weather and 3D situational awareness',
   approvals: 'Administrative approvals queue',
   admin: 'Administrative compliance overview',
 };
@@ -40,6 +41,8 @@ export function TopBar({
   const backendLabel = useDashboardStore((state) => resolveBackend(state.backendId).label);
   const currentOperatorId = useDashboardStore((state) => state.currentOperatorId);
   const setOperator = useDashboardStore((state) => state.setOperator);
+  const threeDView = useDashboardStore((state) => state.threeDView);
+  const openThreeDView = useDashboardStore((state) => state.openThreeDView);
   const drones = useDashboardStore((state) => state.drones);
   // PRD §11.3.3: the operator console scopes the map to this operator's fleet.
   const visibleFleet =
@@ -98,6 +101,18 @@ export function TopBar({
           onClick={() => onRoleChange('admin')}
         >
           <span aria-hidden="true">ADM</span> Admin
+        </button>
+        {/* PRD S126: the 3D View is reachable from BOTH role dashboards, so this lives in
+            the shared top bar rather than in either role's sidebar set (S111/S120 pin those
+            counts exactly). */}
+        <button
+          type="button"
+          className="control-button"
+          aria-pressed={threeDView}
+          onClick={openThreeDView}
+          title="Full-screen 3D city model (PRD §11.4)"
+        >
+          <span aria-hidden="true">3D</span> 3D View
         </button>
         <button
           type="button"

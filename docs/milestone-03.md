@@ -1,4 +1,9 @@
-# Milestone 3 — Backend Ledger + Server State (phase 1)
+# Milestone 3
+
+> **T12 update:** W1 (HKO poller, S35–S40), W2 (real 3-node PoA topology, S3/§4.4) and W3 (3D View
+> tab + HKO weather client tab, S104/S111/S126–S129) are implemented and verified — see
+> `TRACE.md` T12 and the vault note `t12-hko-weather-tab-3node-poa-3d-view`. S96/S103 stay open
+> pending a real Open3Dhk/Ion key; the code path degrades honestly to the `osm` ladder rung. — Backend Ledger + Server State (phase 1)
 
 Status: **phase 1 complete; phase 2 underway — 3-of-3 Proof-of-Authority consensus
 (B2), the event/query surface (B3) and the §8 negotiation protocol (B4) landed.** All four

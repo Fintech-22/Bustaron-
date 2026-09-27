@@ -11,6 +11,7 @@ Serves the PRD §4.4 `server` role on port 8000:
   POST /chain/tx              submit a transaction (auction bid, approval decision, …)
   POST /negotiate             run the PRD §8 negotiation engine and ANCHOR the exchange
   GET  /negotiations          replay anchored negotiations from the chain
+  GET  /api/weather           cached HKO snapshot (PRD §5.2): wind, warnings, STALE flag
   GET  /api/auctions            open + decided auctions (server-persisted)
   GET  /api/approvals           approval queue (server-persisted)
   GET  /api/wallets             credit wallets (server-persisted)
@@ -68,8 +69,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
-from server.agents import DroneTrack, LLMNegotiator, WeatherSnapshot, validate_exchange
-from server.authorities import sign_block_hash, verify_quorum
+from server.agents import (
+    DroneTrack,
+    LLMNegotiator,
+    NegotiationEnvelope,
+    ResolutionEnvelope,
+    WeatherSnapshot,
+    validate_exchange,
+)
+from server.authorities import read_public_keys, sign_block_hash, verify_quorum
+from server.json_http import RemoteCallError, get_json, post_json
+from server.weather import (
+    cached_weather_for_evidence,
+    genesis_weather_record,
+    load_weather,
+    snapshot_hash,
+)
 
 app = FastAPI(title="BUSTARON M3 server", version="0.1.0")
 
@@ -135,6 +150,81 @@ class ChainIntegrityError(HTTPException):
         self.fault_height = fault.height
 
 
+class QuorumUnavailable(RuntimeError):
+    """A configured node quorum could not be collected (a node is down, or its key is gone).
+
+    503, never 4xx and never a silent local fallback: if the operator configured
+    `BUSTARON_NODES`, the platform must NOT quietly sign with the process's own keys, or the
+    decentralization claim becomes a lie the moment a node dies.
+    """
+
+
+class NodeQuorumSigner:
+    """Collects the 3-of-3 quorum from the node PROCESSES (PRD §4.4).
+
+    Each node answers `POST /node/sign` with its own authority id and signature; a node that
+    is unreachable, returns garbage, or tries to sign twice as a different authority kills
+    the whole append. There is deliberately no fallback path here.
+    """
+
+    def __init__(self, urls: list[str], timeout_s: float = 5.0) -> None:
+        self.urls = urls
+        self.timeout_s = timeout_s
+
+    def sign(self, block_hash: str) -> dict[str, str]:
+        signatures: dict[str, str] = {}
+        for url in self.urls:
+            try:
+                answer = post_json(f"{url}/node/sign", {"hash": block_hash}, timeout_s=self.timeout_s)
+            except RemoteCallError as exc:
+                raise QuorumUnavailable(f"chain node unreachable: {exc}") from exc
+            authority_id = answer.get("authorityId")
+            signature = answer.get("sig")
+            if not isinstance(authority_id, str) or not isinstance(signature, str):
+                raise QuorumUnavailable(f"chain node at {url} returned no usable signature")
+            if authority_id in signatures:
+                raise QuorumUnavailable(f"chain node at {url} signed as {authority_id}, already collected")
+            signatures[authority_id] = signature
+        return signatures
+
+
+#: Chain-node URLs (PRD §4.4: 8201-8203) and drone-agent URLs (8101-8102). Unset = the
+#: single-process dev topology, which stays exactly as it was.
+def _url_list(env_name: str) -> list[str]:
+    return [url.strip().rstrip("/") for url in os.environ.get(env_name, "").split(",") if url.strip()]
+
+
+NODE_URLS: list[str] = _url_list("BUSTARON_NODES")
+AGENT_URLS: list[str] = _url_list("BUSTARON_AGENTS")
+NODE_KEYS_DIR = Path(os.environ.get("BUSTARON_NODE_KEYS_DIR", str(Path(__file__).resolve().parent / "data" / "keys")))
+SIGNER: NodeQuorumSigner | None = NodeQuorumSigner(NODE_URLS) if NODE_URLS else None
+
+
+def _verification_keys() -> dict[str, str] | None:
+    """Public keys the quorum must verify against, or None for the in-process authorities.
+
+    With nodes configured, the keys come from the files those nodes PUBLISH when they start
+    (`<authority>.pub`). A missing/incomplete set raises rather than returning False: an
+    unverifiable chain must be reported as UNVERIFIABLE, never as tampered (and never as
+    valid).
+    """
+    if not NODE_URLS:
+        return None
+    keys = read_public_keys(NODE_KEYS_DIR)
+    if keys is None:
+        raise QuorumUnavailable(
+            f"BUSTARON_NODES is set but {NODE_KEYS_DIR} has no complete public-key set — start the nodes first"
+        )
+    return keys
+
+
+def sign_block_hash_via_topology(block_hash: str) -> dict[str, str]:
+    """Signs through the node processes when configured, else with the in-process keys."""
+    if SIGNER is None:
+        return sign_block_hash(block_hash)
+    return SIGNER.sign(block_hash)
+
+
 @app.exception_handler(ChainIntegrityError)
 async def _chain_integrity_handler(_request: Request, exc: ChainIntegrityError) -> JSONResponse:
     """Serialises `ChainIntegrityError` with a top-level, machine-readable `tamperDetected`.
@@ -154,6 +244,21 @@ async def _chain_integrity_handler(_request: Request, exc: ChainIntegrityError) 
             "chainFaultCode": exc.fault_code,
             "chainFaultHeight": exc.fault_height,
         },
+    )
+
+
+@app.exception_handler(QuorumUnavailable)
+async def _quorum_unavailable_handler(_request: Request, exc: QuorumUnavailable) -> JSONResponse:
+    """503 when the configured node quorum cannot be collected.
+
+    503 (not 4xx): the request was fine and the SERVER cannot currently satisfy its own
+    invariant. `tamperDetected: false` is explicit so a client never confuses "a node is
+    down" with "the chain is corrupt".
+    """
+    logger.error("node quorum unavailable: %s", exc)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": str(exc), "tamperDetected": False, "quorumAvailable": False},
     )
 
 
@@ -340,7 +445,7 @@ def append_block(state: State, txs: list[dict[str, Any]], proposer: str = "node:
     # (PRD §9, FR-B5). Signing happens AFTER `hash` is set, which is exactly why
     # `_hash` must exclude `sigs`: the signatures commit to the hash, not vice
     # versa. Genesis is minted through this same path, so it is signed too.
-    block.sigs = sign_block_hash(block.hash)
+    block.sigs = sign_block_hash_via_topology(block.hash)
     state.blocks.append(block)
     return block
 
@@ -385,7 +490,7 @@ def _chain_fault(state: State) -> ChainFault | None:
             return _report(
                 ChainFault(FAULT_BLOCK_HASH, block.height, f"block {block.height} hash does not match its contents")
             )
-        if not verify_quorum(block.hash, block.sigs):
+        if not verify_quorum(block.hash, block.sigs, _verification_keys()):
             return _report(
                 ChainFault(
                     FAULT_QUORUM_INVALID,
@@ -819,11 +924,47 @@ def seed_if_empty(state: State) -> None:
         state.approvals = SEED_APPROVALS
         state.drones = SEED_DRONES
         state.missions = SEED_MISSIONS
-        append_block(state, [{"type": "GENESIS", "note": "BUSTARON M3 chain seeded"}])
+        append_block(
+            state,
+            [
+                {
+                    "type": "GENESIS",
+                    "note": "BUSTARON M3 chain seeded",
+                    # PRD S15: a drone agent parses its assignment FROM THE CHAIN. The
+                    # drone→mission table lives in the genesis transaction (see
+                    # server/agent_node.py `GET /agent/mission`), so the agents and the API
+                    # server need no shared config file to agree on who flies what.
+                    "result": {
+                        "droneMissions": {
+                            "drone-a": "mission-vh-12",
+                            "drone-b": "mission-cbd-04",
+                            "drone-hk-01": "mission-vh-12",
+                            "drone-hk-02": "mission-cbd-04",
+                            "drone-hk-03": "mission-kt-19",
+                            "drone-hk-04": "mission-standby",
+                        },
+                        "constraints": {
+                            "maxAltitudeM": 400,
+                            "sandboxCostFactor": 2.5,
+                            "minSeparationM": 150,
+                        },
+                    },
+                },
+                # PRD S40: the WEATHER transaction records the cached HKO snapshot's hash at
+                # mint time. Cache-only — a genesis mint must never wait on the network.
+                {"type": "WEATHER", "result": genesis_weather_record()},
+            ],
+        )
         save_state(state)
 
 
-seed_if_empty(load_state())
+try:
+    seed_if_empty(load_state())
+    # ...unless the node topology is configured and not up yet: the QUORUM mints the genesis
+    # block, so a node-down boot defers genesis (and self-heals on the next write) rather
+    # than crashing the process or quietly signing with local keys.
+except QuorumUnavailable as exc:
+    logger.error("genesis deferred until the node quorum is reachable: %s", exc)
 
 
 # ---------------------------------------------------------------------- models
@@ -1086,7 +1227,7 @@ def submit_tx(tx: Tx) -> dict[str, Any]:
         # or signing path is broken (e.g. a rotated/mismatched authority key), hence
         # 500 rather than 4xx. We POP the block first so an unverified block is never
         # left anchored, and raise before save_state() so nothing is persisted either.
-        if not verify_quorum(block.hash, block.sigs):
+        if not verify_quorum(block.hash, block.sigs, _verification_keys()):
             state.blocks.pop()
             raise HTTPException(
                 status_code=500,
@@ -1261,7 +1402,22 @@ def apply_settle(state: State, payload: SettlePayload) -> dict[str, Any]:
 
 def apply_file_approval(state: State, payload: FileApprovalPayload) -> dict[str, Any]:
     """Escrows credits for a newly filed flight approval request. Mirrors
-    fileApprovalRequest() in src/services/creditsService.ts."""
+    fileApprovalRequest() in src/services/creditsService.ts.
+
+    PRD S38 — typhoon gate: filing a flight plan IS dispatch, so with Typhoon Signal 8 or
+    above in force the request is refused with 409 and nothing is escrowed. A STALE
+    snapshot blocks nothing (S39: we do not know, so the mission proceeds) — the gate is
+    driven by the cached HKO warning codes, never by prose.
+    """
+    weather_now = cached_weather_for_evidence()
+    if weather_now.dispatchBlocked:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Typhoon Signal {weather_now.typhoonSignal} ({weather_now.typhoonCode}) in force: "
+                "dispatch refused (PRD S38)"
+            ),
+        )
     # Duplicate ids are rejected server-only: `state.approvals` is a dict keyed by
     # id, so a duplicate would silently OVERWRITE the existing request (and its
     # escrow) instead of sitting alongside it. The client's array-based store can
@@ -1299,6 +1455,33 @@ def apply_file_approval(state: State, payload: FileApprovalPayload) -> dict[str,
     }
 
 
+@app.get("/api/weather")
+def weather() -> dict[str, Any]:
+    """HKO snapshot (PRD §5.2, S35-S40).
+
+    Refreshes through HKO only when the cache is older than the TTL (S35); when HKO is
+    unreachable it serves the last good snapshot with `stale: true` (S39). `dispatchBlocked`
+    is the S38 gate, `pathCostFactor` the S36 wind penalty, and `genesisWeather` the S40
+    anchor recorded in the genesis block — `genesisMatchesCache` is honestly False once the
+    cache has been refreshed past genesis.
+    """
+    snapshot = load_weather()
+    state = load_state()
+    genesis_weather = next(
+        (tx.get("result") for block in state.blocks[:1] for tx in block.txs if tx.get("type") == "WEATHER"),
+        None,
+    )
+    current_hash = snapshot_hash(snapshot)
+    return {
+        **snapshot.model_dump(),
+        "dispatchBlocked": snapshot.dispatchBlocked,
+        "pathCostFactor": snapshot.pathCostFactor,
+        "cachedSnapshotHash": current_hash,
+        "genesisWeather": genesis_weather,
+        "genesisMatchesCache": bool(genesis_weather) and genesis_weather.get("snapshotHash") == current_hash,
+    }
+
+
 # ------------------------------------------------- negotiation protocol (PRD §8)
 #: The tx type `/negotiate` anchors. NEGOTIATION is SERVER-MINTED, exactly like GENESIS:
 #: it is produced by the engine and written through `append_block()`, and is deliberately
@@ -1319,6 +1502,29 @@ class NegotiateRequest(BaseModel):
     weather: WeatherSnapshot | None = None
 
 
+def _weather_for_negotiation(supplied: WeatherSnapshot | None) -> tuple[WeatherSnapshot, dict[str, Any]]:
+    """S37: the evidence's `wind_kmh` must be the CACHED HKO value, not a fresh reading.
+
+    A caller-supplied snapshot wins (the §8.5 envelope always allows it). Otherwise the
+    cache is used — cache-only, so a cold HKO cannot blow the FR-N7 budget — and the
+    returned detail block carries the hash the caller can compare with `/api/weather`.
+    """
+    if supplied is not None:
+        return supplied, {"source": "client", "cachedSnapshotHash": None}
+    snapshot = cached_weather_for_evidence()
+    return (
+        WeatherSnapshot(wind_kmh=snapshot.windKmh, weather_stale=snapshot.stale),
+        {
+            "source": "cache",
+            "cachedSnapshotHash": snapshot_hash(snapshot),
+            "windKmh": snapshot.windKmh,
+            "typhoonSignal": snapshot.typhoonSignal,
+            "stale": snapshot.stale,
+            "pathCostFactor": snapshot.pathCostFactor,
+        },
+    )
+
+
 def _conflict_payload(conflict: Any) -> dict[str, Any]:
     """The `ConflictEvent` dataclass as JSON — field names kept verbatim."""
     return {
@@ -1330,6 +1536,87 @@ def _conflict_payload(conflict: Any) -> dict[str, Any]:
         "firstConflictTS": conflict.first_conflict_t_s,
         "reason": conflict.reason,
     }
+
+
+def _agent_for(drone_id: str) -> str | None:
+    """The agent PROCESS that owns `drone_id`, or None (think in-process).
+
+    Matching is by the drone id the agent reports about ITSELF over `/agent/health`, so the
+    topology is discovered, never configured into the API server.
+    """
+    for url in AGENT_URLS:
+        try:
+            health = get_json(f"{url}/agent/health", timeout_s=2.0)
+        except RemoteCallError as exc:
+            logger.warning("agent at %s is unreachable: %s", url, exc)
+            continue
+        if health.get("droneId") == drone_id:
+            return url
+    return None
+
+
+def _exchange_from_agent(answer: dict[str, Any]) -> tuple[Any, Any, Any, Any, str, bool, dict[str, Any]] | None:
+    """Normalises an agent process's answer, refusing an incomplete or unparseable one.
+
+    A sibling producing garbage is a 502 — never a silent in-process retry: the operator
+    asked the AGENT to think, and quietly substituting the server's own engine would make
+    the delegation unverifiable (and the claim untrue).
+    """
+    transcript = answer.get("transcript") or []
+    if not transcript:
+        return None
+    if len(transcript) != 3:
+        raise HTTPException(status_code=502, detail=f"agent returned {len(transcript)} messages, expected 3")
+    try:
+        proposal = NegotiationEnvelope(**transcript[0])
+        response = NegotiationEnvelope(**transcript[1])
+        resolution = ResolutionEnvelope(**transcript[2])
+    except ValidationError as exc:
+        raise HTTPException(status_code=502, detail=f"agent returned an unparseable envelope: {exc}") from exc
+    return (
+        proposal,
+        response,
+        resolution,
+        answer.get("conflict"),
+        str(answer.get("engine") or "llm"),
+        bool(answer.get("fallback")),
+        {"inProcess": False, "droneId": answer.get("droneId"), "pid": answer.get("agentPid")},
+    )
+
+
+def _run_exchange(
+    request: NegotiateRequest, weather: WeatherSnapshot
+) -> tuple[Any, Any, Any, Any, str, bool, dict[str, Any]] | None:
+    """Runs §8 — through the drone's own agent PROCESS when the topology is configured."""
+    agent_url = _agent_for(request.own.id)
+    if agent_url is not None:
+        try:
+            answer = post_json(
+                f"{agent_url}/agent/negotiate",
+                {
+                    "own": request.own.model_dump(),
+                    "peer": request.peer.model_dump(),
+                    "windowStartS": request.windowStartS,
+                    "weather": weather.model_dump(),
+                },
+                timeout_s=10.0,
+            )
+        except RemoteCallError as exc:
+            raise HTTPException(status_code=502, detail=f"agent process failed: {exc}") from exc
+        return _exchange_from_agent(answer)
+    negotiator = LLMNegotiator()
+    outcome = negotiator.negotiate(request.own, request.peer, request.windowStartS, _now_ms(), weather)
+    if outcome is None:
+        return None
+    return (
+        outcome.proposal,
+        outcome.response,
+        outcome.resolution,
+        _conflict_payload(outcome.conflict),
+        negotiator.name(),
+        outcome.fallback,
+        {"inProcess": True, "pid": os.getpid()},
+    )
 
 
 @app.post("/negotiate")
@@ -1348,13 +1635,18 @@ def negotiate(request: NegotiateRequest) -> dict[str, Any]:
         if fault is not None:
             _record_tamper_event(state, fault, NEGOTIATION_TX)
             raise ChainIntegrityError(fault)
-        negotiator = LLMNegotiator()
-        outcome = negotiator.negotiate(
-            request.own, request.peer, request.windowStartS, _now_ms(), request.weather
-        )
-        if outcome is None:
-            return {"ok": True, "conflict": None, "engine": negotiator.name(), "blocks": []}
-        problems = validate_exchange(outcome.proposal, outcome.response)
+        weather, weather_detail = _weather_for_negotiation(request.weather)
+        exchange = _run_exchange(request, weather)
+        if exchange is None:
+            return {
+                "ok": True,
+                "conflict": None,
+                "engine": LLMNegotiator().name(),
+                "blocks": [],
+                "weather": weather_detail,
+            }
+        proposal, response, resolution, conflict_payload, engine_name, fallback, engine_process = exchange
+        problems = validate_exchange(proposal, response)
         if problems:
             # The engine produced an exchange its own validator rejects. That is an
             # engine bug, not a client error — refuse rather than anchor a transcript
@@ -1365,15 +1657,15 @@ def negotiate(request: NegotiateRequest) -> dict[str, Any]:
             )
         heights: list[int] = []
         timestamps: list[int] = []
-        for index, envelope in enumerate((outcome.proposal, outcome.response, outcome.resolution)):
+        for index, envelope in enumerate((proposal, response, resolution)):
             anchor: dict[str, Any] = {
                 "type": NEGOTIATION_TX,
-                "result": {"envelope": envelope.model_dump(by_alias=True), "engine": negotiator.name()},
+                "result": {"envelope": envelope.model_dump(by_alias=True), "engine": engine_name},
             }
             if index == 2:
-                anchor["result"]["fallback"] = outcome.fallback
+                anchor["result"]["fallback"] = fallback
             block = append_block(state, [anchor])
-            if not verify_quorum(block.hash, block.sigs):
+            if not verify_quorum(block.hash, block.sigs, _verification_keys()):
                 state.blocks.pop()
                 raise HTTPException(
                     status_code=500,
@@ -1384,15 +1676,14 @@ def negotiate(request: NegotiateRequest) -> dict[str, Any]:
         save_state(state)
         return {
             "ok": True,
-            "engine": negotiator.name(),
-            "conflict": _conflict_payload(outcome.conflict),
-            "fallback": outcome.fallback,
+            "engine": engine_name,
+            "conflict": conflict_payload,
+            "fallback": fallback,
             "blocks": heights,
             "latencyMs": timestamps[-1] - timestamps[0],
-            "transcript": [
-                envelope.model_dump(by_alias=True)
-                for envelope in (outcome.proposal, outcome.response, outcome.resolution)
-            ],
+            "weather": weather_detail,
+            "engineProcess": engine_process,
+            "transcript": [envelope.model_dump(by_alias=True) for envelope in (proposal, response, resolution)],
         }
 
 

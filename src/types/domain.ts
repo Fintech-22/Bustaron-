@@ -15,6 +15,7 @@ export type NavSection =
   | 'fleet'
   | 'analytics'
   | 'alerts'
+  | 'weather'
   | 'approvals'
   | 'admin';
 

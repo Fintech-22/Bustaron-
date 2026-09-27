@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { EmptyState } from '../common/EmptyState';
 import { MetricCard } from '../common/MetricCard';
 import { MapHost } from '../map/MapHost';
+import { ThreeDViewPanel } from '../three/ThreeDViewPanel';
+import { WeatherPanel } from '../panels/WeatherPanel';
 import { AdminPanel } from '../panels/AdminPanel';
 import { AlertsPanel } from '../panels/AlertsPanel';
 import { AnalyticsPanel } from '../panels/AnalyticsPanel';
@@ -36,6 +38,7 @@ export function AppShell(): JSX.Element {
   const alerts = useDashboardStore((state) => state.alerts);
   const lastUpdatedIso = useDashboardStore((state) => state.lastUpdatedIso);
   const emergencyMode = useDashboardStore((state) => state.emergencyMode);
+  const threeDView = useDashboardStore((state) => state.threeDView);
   const setRole = useDashboardStore((state) => state.setRole);
   const navigate = useDashboardStore((state) => state.navigate);
   const triggerEmergency = useDashboardStore((state) => state.triggerEmergency);
@@ -106,6 +109,7 @@ export function AppShell(): JSX.Element {
             {activeSection === 'fleet' && <FleetPanel />}
             {activeSection === 'analytics' && <AnalyticsPanel />}
             {activeSection === 'alerts' && <AlertsPanel />}
+            {activeSection === 'weather' && <WeatherPanel />}
             {activeSection === 'approvals' && activeRole === 'admin' && <ApprovalsQueuePanel expanded />}
             {activeSection === 'admin' && activeRole === 'admin' && <AdminPanel expanded />}
             {(activeSection === 'admin' || activeSection === 'approvals') && activeRole !== 'admin' && (
@@ -122,6 +126,13 @@ export function AppShell(): JSX.Element {
           </aside>
         </main>
       </div>
+      {/* PRD S127: full screen, over the 2D dashboard — the dashboard itself stays mounted
+          so exiting returns to it with its own state intact (S129). */}
+      {threeDView && (
+        <div className="three-d-overlay">
+          <ThreeDViewPanel />
+        </div>
+      )}
     </div>
   );
 }
