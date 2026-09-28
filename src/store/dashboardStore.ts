@@ -17,6 +17,7 @@ import { awardAuction, decideApproval, placeBid } from '../services/creditsServi
 import type { ApprovalDecisionResult } from '../services/creditsService';
 import { planRoute } from '../services/routePlanner';
 import type { PlannedRoute } from '../services/routePlanner';
+import { buildSkycells } from '../services/skycells';
 import { evaluateZonesAtPoint } from '../services/geo/pointInPolygon';
 import type { ZoneHit } from '../services/geo/pointInPolygon';
 import { DEFAULT_ALTITUDE_BAND_M } from '../services/altitudeBands';
@@ -24,6 +25,7 @@ import type { BackendId } from '../services/dataBackend';
 import { createMission, deleteMissionFromList, updateMissionList } from '../services/missionService';
 import type { MissionDraft } from '../services/missionService';
 import { deriveAlerts, preserveAcknowledgements } from '../services/alerts';
+import type { ClosedCellSet } from '../services/skycells';
 
 export interface DashboardStore extends AppState {
   activeRole: UserRole;
@@ -91,6 +93,10 @@ export interface DashboardStore extends AppState {
   acknowledgeAlert: (id: string) => void;
   /** PRD S115: acknowledges every outstanding alert. */
   acknowledgeAllAlerts: () => void;
+  /** Admin action: close or reopen a skycell (blocks operator flight plans through it). */
+  closedCells: ClosedCellSet;
+  /** Toggle the closure state of a skycell by id. */
+  toggleCellClosure: (cellId: string) => void;
 }
 
 const initialBackend: DataBackend = resolveBackend('mock');
@@ -137,6 +143,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   lastError: null,
   alerts: initialAlerts,
   threeDView: false,
+  closedCells: new Set<string>(),
   initialize: (): void => {
     const backend: DataBackend = resolveBackend(get().backendId);
     const loadedState: AppState = backend.loadInitialState();
@@ -156,6 +163,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       alerts: deriveAlerts(loadedState.drones, loadedState.weatherAlerts, loadedState.lastUpdatedIso),
       // A backend swap (hydrate) must never leave a stale 3D scene over fresh data.
       threeDView: false,
+      closedCells: new Set<string>(),
     });
   },
   setRole: (role: UserRole): void => {
@@ -322,13 +330,30 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   acknowledgeAllAlerts: (): void => {
     set({ alerts: get().alerts.map((alert: Alert): Alert => ({ ...alert, acknowledged: true })) });
   },
+  toggleCellClosure: (cellId: string): void => {
+    const next = new Set(get().closedCells);
+    if (next.has(cellId)) {
+      next.delete(cellId);
+    } else {
+      next.add(cellId);
+    }
+    set({ closedCells: next });
+  },
 }));
 
 /** Convenience helper used by the planning UI: runs A* against current zones. */
 export function planDraftRoute(start: { lat: number; lng: number }, goal: { lat: number; lng: number }): void {
-  const zones = useDashboardStore.getState().zones;
+  const state = useDashboardStore.getState();
+  const zones = state.zones;
+  const skycells = buildSkycells(
+    state.drones,
+    state.missions,
+    state.weatherAlerts,
+    state.closedCells,
+    zones.filter((z) => z.kind === 'rfz' || z.kind === 'sensitive').map((z) => z.polygon),
+  );
   try {
-    const route: PlannedRoute = planRoute(start, goal, { zones });
+    const route: PlannedRoute = planRoute(start, goal, { zones, skycells, closedCells: state.closedCells });
     const hits: ZoneHit[] = evaluateZonesAtPoint(start, zones, 120);
     useDashboardStore.setState({ plannedRoute: route, routeZoneHits: hits, lastError: null });
   } catch (error) {

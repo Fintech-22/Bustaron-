@@ -1,0 +1,23 @@
+{
+  "url": "http://127.0.0.1:4173",
+  "tag": "new-pages",
+  "capturedAt": "2026-09-28T12:08:44.839Z",
+  "consoleErrors": [],
+  "shots": [
+    {
+      "name": "01-operator-flight-detail",
+      "file": "screenshots\\2026-09-28T12-08-30-new-pages\\01-operator-flight-detail.png",
+      "note": "Flight Detail view"
+    },
+    {
+      "name": "02-operator-flight-detail-expanded",
+      "file": "screenshots\\2026-09-28T12-08-30-new-pages\\02-operator-flight-detail-expanded.png",
+      "note": "Flight Detail expanded"
+    },
+    {
+      "name": "03-admin-airspace",
+      "file": "screenshots\\2026-09-28T12-08-30-new-pages\\03-admin-airspace.png",
+      "note": "Airspace Management view"
+    }
+  ]
+}

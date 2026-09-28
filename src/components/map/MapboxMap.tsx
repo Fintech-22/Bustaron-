@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from '../common/EmptyState';
 import { MAPBOX_STYLE, MAPBOX_TOKEN } from '../../services/mapboxConfig';
-import { buildSkycells, skycellBandColor, skycellsToGeoJson } from '../../services/skycells';
+import { buildSkycells, skycellBandColor, skycellsToGeoJson, classifyRisk, riskClassColor } from '../../services/skycells';
 import {
   dronesToGeoJson,
   missionsToGeoJson,
@@ -19,6 +19,19 @@ const HONG_KONG_CENTER: [number, number] = [114.17, 22.3];
 const HONG_KONG_ZOOM = 11.2;
 
 type MapboxStatus = 'idle' | 'ready' | 'sdk-missing' | 'error';
+
+interface SkycellDetailProps {
+  id: string;
+  risk: number;
+  riskClass: string;
+  closed: boolean;
+  windKph: number;
+  temperatureC: number;
+  areaKm2: number;
+  occupancy: number;
+  band: string;
+  populationPerKm2: number;
+}
 
 const SOURCE = {
   cells: 'skycells',
@@ -115,15 +128,26 @@ function buildOverlay(map: MapboxMapInstance): void {
     type: 'fill',
     source: SOURCE.cells,
     paint: {
-      'fill-color': ['match', ['get', 'band'], 'light', skycellBandColor.light, 'busy', skycellBandColor.busy, 'congested', skycellBandColor.congested, skycellBandColor.clear],
-      'fill-opacity': 0.14,
+      'fill-color': [
+        'case',
+        ['get', 'closed'], '#1e1b4b',
+        ['match', ['get', 'band'], 'light', skycellBandColor.light, 'busy', skycellBandColor.busy, 'congested', skycellBandColor.congested, skycellBandColor.clear],
+      ],
+      'fill-opacity': [
+        'case',
+        ['get', 'closed'], 0.55,
+        0.14,
+      ],
     },
   });
   map.addLayer({
     id: LAYER.cellLine,
     type: 'line',
     source: SOURCE.cells,
-    paint: { 'line-color': 'rgba(148,163,184,0.25)', 'line-width': 0.6 },
+    paint: {
+      'line-color': ['case', ['get', 'closed'], '#818cf8', 'rgba(148,163,184,0.25)'],
+      'line-width': ['case', ['get', 'closed'], 1.2, 0.6],
+    },
   });
 
   map.addLayer({
@@ -132,7 +156,7 @@ function buildOverlay(map: MapboxMapInstance): void {
     source: SOURCE.zones,
     paint: {
       'fill-color': ZONE_COLORS,
-      'fill-opacity': ['match', ['get', 'kind'], 'corridor', 0.08, 'heliport', 0.1, 'sandbox', 0.14, 0.18],
+      'fill-opacity': ['match', ['get', 'kind'], 'rfz', 0.28, 'sensitive', 0.25, 'corridor', 0.08, 'heliport', 0.1, 'sandbox', 0.14, 0.18],
     },
   });
   // PRD FR-OP-V3 / S106: restricted (RFZ) zones get the red diagonal hatch on
@@ -157,7 +181,31 @@ function buildOverlay(map: MapboxMapInstance): void {
     id: LAYER.zoneLine,
     type: 'line',
     source: SOURCE.zones,
-    paint: { 'line-color': ZONE_COLORS, 'line-width': 1.4, 'line-opacity': 0.9 },
+    paint: {
+      'line-color': ZONE_COLORS,
+      'line-width': ['match', ['get', 'kind'], 'rfz', 2.5, 'sensitive', 2, 'sandbox', 1.5, 1.4],
+      'line-opacity': 0.95,
+    },
+  });
+
+  // Zone labels for clear identification (RFZ/sensitive especially)
+  map.addLayer({
+    id: 'zone-label',
+    type: 'symbol',
+    source: SOURCE.zones,
+    minzoom: 10,
+    layout: {
+      'text-field': ['get', 'name'],
+      'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
+      'text-size': 10,
+      'text-anchor': 'center',
+      'text-allow-overlap': false,
+    },
+    paint: {
+      'text-color': ['match', ['get', 'kind'], 'rfz', '#fb7185', 'sensitive', '#c084fc', 'sandbox', '#fbbf24', '#38bdf8'],
+      'text-halo-color': '#05080c',
+      'text-halo-width': 1.5,
+    },
   });
 
   map.addLayer({
@@ -262,6 +310,34 @@ function buildOverlay(map: MapboxMapInstance): void {
   map.on('mouseleave', LAYER.droneDot, (): void => {
     map.getCanvas().style.cursor = '';
   });
+
+  // Skycell click → detail popup
+  map.on('click', LAYER.cellFill, (event: MapboxMouseEvent): void => {
+    const props = event.features?.[0]?.properties;
+    if (!props) return;
+    const cellData: SkycellDetailProps = {
+      id: props.id as string,
+      risk: props.risk as number,
+      riskClass: props.riskClass as string,
+      closed: props.closed as boolean,
+      windKph: props.windKph as number,
+      temperatureC: props.temperatureC as number,
+      areaKm2: props.areaKm2 as number,
+      occupancy: props.occupancy as number,
+      band: props.band as string,
+      populationPerKm2: props.populationPerKm2 as number,
+    };
+    // Store clicked cell for the React detail panel
+    (window as unknown as { __bustaronClickedCell?: SkycellDetailProps }).__bustaronClickedCell = cellData;
+    // Dispatch a custom event the React component listens for
+    window.dispatchEvent(new CustomEvent('bustaron-skycell-click', { detail: cellData }));
+  });
+  map.on('mouseenter', LAYER.cellFill, (): void => {
+    map.getCanvas().style.cursor = 'pointer';
+  });
+  map.on('mouseleave', LAYER.cellFill, (): void => {
+    map.getCanvas().style.cursor = '';
+  });
 }
 
 /** Pushes current store state into the overlay sources + layer visibility. */
@@ -271,8 +347,11 @@ function pushAll(map: MapboxMapInstance): void {
   const visibleDrones = state.drones
     .filter((drone) => state.activeRole === 'admin' || drone.operatorId === state.currentOperatorId)
     .filter((drone) => droneInBand(drone, state.altitudeFilterM));
+  const rfzPolygons = state.zones
+    .filter((z) => z.kind === 'rfz' || z.kind === 'sensitive')
+    .map((z) => z.polygon);
   const data: [string, unknown][] = [
-    [SOURCE.cells, skycellsToGeoJson(buildSkycells(state.drones, state.missions))],
+    [SOURCE.cells, skycellsToGeoJson(buildSkycells(state.drones, state.missions, state.weatherAlerts, state.closedCells, rfzPolygons))],
     [SOURCE.zones, zonesToGeoJson(state.zones)],
     [SOURCE.weather, weatherToGeoJson(state.weatherAlerts)],
     [SOURCE.weatherArrows, weatherArrowsToGeoJson(state.weatherAlerts)],
@@ -289,6 +368,7 @@ function pushAll(map: MapboxMapInstance): void {
     [LAYER.zoneFill, state.activeLayers.restrictedZones],
     [LAYER.zoneHatch, state.activeLayers.restrictedZones],
     [LAYER.zoneLine, state.activeLayers.restrictedZones],
+    ['zone-label', state.activeLayers.restrictedZones],
     [LAYER.weatherFill, state.activeLayers.weather],
     [LAYER.weatherLine, state.activeLayers.weather],
     [LAYER.weatherArrow, state.activeLayers.weather],
@@ -314,9 +394,12 @@ function pushAll(map: MapboxMapInstance): void {
 export function MapboxMap(): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<MapboxStatus>('idle');
+  const [clickedCell, setClickedCell] = useState<SkycellDetailProps | null>(null);
   const tick = useDashboardStore((state) => state.tick);
   const activeLayers = useDashboardStore((state) => state.activeLayers);
   const toggleLayer = useDashboardStore((state) => state.toggleLayer);
+  const activeRole = useDashboardStore((state) => state.activeRole);
+  const toggleCellClosure = useDashboardStore((state) => state.toggleCellClosure);
   // altitudeFilterM is intentionally subscribed here: the band filter changes
   // must re-render MapHost's control row, while the map itself updates via the
   // store subscription inside the init effect (pushAll reads it from state).
@@ -367,7 +450,8 @@ export function MapboxMap(): JSX.Element {
           state.currentOperatorId !== prev.currentOperatorId ||
           state.activeRole !== prev.activeRole ||
           state.selectedDroneId !== prev.selectedDroneId ||
-          state.plannedRoute !== prev.plannedRoute
+          state.plannedRoute !== prev.plannedRoute ||
+          state.closedCells !== prev.closedCells
         ) {
             pushAll(map);
           }
@@ -377,9 +461,17 @@ export function MapboxMap(): JSX.Element {
       }
     });
 
+    // Listen for skycell click events from the Mapbox layer
+    const onSkycellClick = (event: Event): void => {
+      const detail = (event as CustomEvent<SkycellDetailProps>).detail;
+      setClickedCell(detail);
+    };
+    window.addEventListener('bustaron-skycell-click', onSkycellClick);
+
     return (): void => {
       disposed = true;
       unsubscribe?.();
+      window.removeEventListener('bustaron-skycell-click', onSkycellClick);
       delete (window as unknown as { __bustaronMap?: MapboxMapInstance }).__bustaronMap;
       map.remove();
     };
@@ -442,6 +534,98 @@ export function MapboxMap(): JSX.Element {
           </div>
         )}
       </div>
+
+      {clickedCell !== null && (
+        <SkycellDetailPanel
+          cell={clickedCell}
+          onClose={(): void => setClickedCell(null)}
+          isAdmin={activeRole === 'admin'}
+          onToggleClosure={(): void => {
+            toggleCellClosure(clickedCell.id);
+            setClickedCell({ ...clickedCell, closed: !clickedCell.closed });
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+/** Skycell detail panel — shows on click with full cell information and admin controls. */
+function SkycellDetailPanel({
+  cell,
+  onClose,
+  isAdmin,
+  onToggleClosure,
+}: {
+  cell: SkycellDetailProps;
+  onClose: () => void;
+  isAdmin: boolean;
+  onToggleClosure: () => void;
+}): JSX.Element {
+  const riskColor = riskClassColor(cell.risk);
+  const occupancyPct = Math.round(cell.occupancy * 100);
+
+  return (
+    <div className="skycell-detail" role="dialog" aria-label={`Skycell ${cell.id} details`}>
+      <div className="skycell-detail__header">
+        <h3 className="skycell-detail__title">Skycell {cell.id}</h3>
+        <button type="button" className="skycell-detail__close" onClick={onClose} aria-label="Close skycell details">
+          ×
+        </button>
+      </div>
+
+      {cell.closed && (
+        <div className="skycell-detail__closed-banner" role="status">
+          <strong>CLOSED</strong> — This skycell is restricted. Flight plans through this cell are blocked.
+        </div>
+      )}
+
+      <div className="skycell-detail__risk">
+        <div className="skycell-detail__risk-score" style={{ color: riskColor }}>
+          {cell.risk}
+          <span className="skycell-detail__risk-label">/ 100</span>
+        </div>
+        <div className="skycell-detail__risk-class" style={{ color: riskColor }}>
+          {classifyRisk(cell.risk).toUpperCase()}
+        </div>
+      </div>
+
+      <dl className="skycell-detail__grid">
+        <div className="skycell-detail__item">
+          <dt>Area</dt>
+          <dd>{cell.areaKm2.toFixed(4)} km²</dd>
+        </div>
+        <div className="skycell-detail__item">
+          <dt>Wind</dt>
+          <dd>{cell.windKph} km/h</dd>
+        </div>
+        <div className="skycell-detail__item">
+          <dt>Temperature</dt>
+          <dd>{cell.temperatureC}°C</dd>
+        </div>
+        <div className="skycell-detail__item">
+          <dt>Drone occupancy</dt>
+          <dd>{occupancyPct}% ({cell.band})</dd>
+        </div>
+        <div className="skycell-detail__item">
+          <dt>Population density</dt>
+          <dd>{cell.populationPerKm2.toLocaleString()} /km²</dd>
+        </div>
+      </dl>
+
+      {isAdmin && (
+        <button
+          type="button"
+          className={`control-button ${cell.closed ? 'control-button--reopen' : 'control-button--danger'}`}
+          onClick={onToggleClosure}
+        >
+          {cell.closed ? 'Reopen skycell' : 'Close skycell'}
+        </button>
+      )}
+
+      {!isAdmin && cell.closed && (
+        <p className="helper-text">Contact an administrator to reopen this skycell.</p>
+      )}
+    </div>
   );
 }

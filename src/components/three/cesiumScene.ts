@@ -186,8 +186,11 @@ export async function buildScene(inputs: SceneInputs): Promise<SceneController> 
   };
 
   // ---- RFZ volumes (FR-3D-V3): restricted red, sandbox amber, others cyan.
+  // Restricted zones get higher opacity for clear visibility per user requirement.
   for (const zone of zones) {
-    const color = Cesium.Color.fromCssColorString(zoneColor(zone.kind)).withAlpha(zone.kind === 'sandbox' ? 0.4 : 0.32);
+    const isRestricted = zone.kind === 'rfz' || zone.kind === 'sensitive';
+    const alpha = isRestricted ? 0.42 : zone.kind === 'sandbox' ? 0.4 : 0.32;
+    const color = Cesium.Color.fromCssColorString(zoneColor(zone.kind)).withAlpha(alpha);
     groupOf('restrictedZones').entities.push(
       viewer.entities.add({
         id: `zone-${zone.id}`,
@@ -199,7 +202,8 @@ export async function buildScene(inputs: SceneInputs): Promise<SceneController> 
           extrudedHeight: RFZ_VOLUME_HEIGHT_M,
           material: color,
           outline: true,
-          outlineColor: Cesium.Color.fromCssColorString(zoneColor(zone.kind)).withAlpha(0.9),
+          outlineColor: Cesium.Color.fromCssColorString(zoneColor(zone.kind)).withAlpha(isRestricted ? 1.0 : 0.9),
+          outlineWidth: isRestricted ? 3 : 2,
         },
       }),
     );
@@ -287,19 +291,28 @@ export async function buildScene(inputs: SceneInputs): Promise<SceneController> 
   }
 
   // ---- Traffic density (PRD S128's "traffic heatmap"): skycell volumes by band.
+  // Closed cells get a distinct dark purple volume with higher opacity.
   for (const cell of skycells) {
+    const isClosed = cell.closed;
+    const baseColor = isClosed ? '#312e81' : bandColor(cell.band);
+    const alpha = isClosed ? 0.55 : 0.22;
+    const height = isClosed ? 200 : TRAFFIC_VOLUME_HEIGHT_M;
     groupOf('grid').entities.push(
       viewer.entities.add({
         id: `skycell-${cell.id}`,
-        name: `Skycell ${cell.row}/${cell.col}`,
-        description: `occupancy ${(cell.occupancy * 100).toFixed(0)}% (${cell.band})`,
+        name: `Skycell ${cell.row}/${cell.col}${isClosed ? ' (CLOSED)' : ''}`,
+        description: isClosed
+          ? `CLOSED — flight plans blocked. Risk: ${cell.risk}/100`
+          : `occupancy ${(cell.occupancy * 100).toFixed(0)}% (${cell.band}) · risk ${cell.risk}/100 · wind ${cell.windKph} km/h · ${cell.temperatureC}°C`,
         polygon: {
           hierarchy: new Cesium.PolygonHierarchy(
             Cesium.Cartesian3.fromDegreesArray(cell.ring.flatMap(([lng, lat]) => [lng, lat])),
           ),
           height: 0,
-          extrudedHeight: TRAFFIC_VOLUME_HEIGHT_M,
-          material: Cesium.Color.fromCssColorString(bandColor(cell.band)).withAlpha(0.22),
+          extrudedHeight: height,
+          material: Cesium.Color.fromCssColorString(baseColor).withAlpha(alpha),
+          outline: isClosed,
+          outlineColor: Cesium.Color.fromCssColorString('#818cf8').withAlpha(0.8),
         },
       }),
     );

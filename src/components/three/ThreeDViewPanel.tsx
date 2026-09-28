@@ -72,6 +72,7 @@ export function ThreeDViewPanel(): JSX.Element {
   const zones = useDashboardStore((state) => state.zones);
   const weatherAlerts = useDashboardStore((state) => state.weatherAlerts);
   const plannedRoute = useDashboardStore((state) => state.plannedRoute);
+  const closedCells = useDashboardStore((state) => state.closedCells);
 
   const env = useMemo(() => readCesiumEnv(), []);
   // PRD §11.3.3 fleet scoping, identical to the 2D map: operators see their own
@@ -83,7 +84,12 @@ export function ThreeDViewPanel(): JSX.Element {
         : dronesAll.filter((drone: Drone): boolean => drone.operatorId === currentOperatorId),
     [activeRole, currentOperatorId, dronesAll],
   );
-  const skycells = useMemo(() => buildSkycells(drones, missions), [drones, missions]);
+  const skycells = useMemo(() => {
+    const rfzPolygons = zones
+      .filter((z) => z.kind === 'rfz' || z.kind === 'sensitive')
+      .map((z) => z.polygon);
+    return buildSkycells(drones, missions, weatherAlerts, closedCells, rfzPolygons);
+  }, [drones, missions, weatherAlerts, closedCells, zones]);
   const layers = useMemo<Record<ThreeDLayerId, boolean>>(
     () => ({ ...storeLayers, ...local3d }),
     [storeLayers, local3d],

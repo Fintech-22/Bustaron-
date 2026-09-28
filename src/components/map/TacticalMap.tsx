@@ -122,7 +122,8 @@ export function TacticalMap(): JSX.Element {
           {activeLayers.restrictedZones && zones.map((zone: AirspaceZone): JSX.Element => {
             const restricted: boolean = zone.kind === 'rfz';
             const sandbox: boolean = zone.kind === 'sandbox';
-            const stroke: string = restricted ? 'var(--color-red)' : sandbox ? 'var(--color-amber)' : riskColorByName[zone.riskLevel];
+            const sensitive: boolean = zone.kind === 'sensitive';
+            const stroke: string = restricted ? 'var(--color-red)' : sandbox ? 'var(--color-amber)' : sensitive ? '#c084fc' : riskColorByName[zone.riskLevel];
             const fill: string = restricted ? 'url(#rfz-hatch)' : sandbox ? 'var(--color-amber)' : riskColorByName[zone.riskLevel];
             const fillOpacity: number = restricted ? 1 : sandbox ? 0.12 : zone.kind === 'corridor' ? 0.08 : 0.16;
             return (
@@ -134,7 +135,7 @@ export function TacticalMap(): JSX.Element {
                 fill={fill}
                 fillOpacity={fillOpacity}
                 stroke={stroke}
-                strokeWidth={restricted ? 0.55 : 0.45}
+                strokeWidth={restricted ? 0.7 : sensitive ? 0.6 : 0.45}
                 strokeDasharray={zone.kind === 'corridor' ? '1.4 1.2' : '0'}
               />
             );

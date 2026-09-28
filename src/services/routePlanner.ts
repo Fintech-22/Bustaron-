@@ -1,4 +1,5 @@
 import type { AirspaceZone, GeoPoint } from '../types/domain';
+import type { Skycell, ClosedCellSet } from './skycells';
 import {
   planarDistanceM,
   pointInPolygon,
@@ -16,6 +17,8 @@ export const DEFAULT_ZONE_MARGIN_M = 60;
 export const GRID_SPACING_M = 600;
 /** Cost multiplier applied to waypoints inside an approved corridor zone. */
 const CORRIDOR_COST_FACTOR = 0.45;
+/** Risk weight: how much skycell risk adds to the base step cost. */
+const RISK_COST_WEIGHT = 0.8;
 
 export interface PlannedRoute {
   waypoints: GeoPoint[];
@@ -135,10 +138,57 @@ function isBlocked(
   return false;
 }
 
+/**
+ * Finds the skycell containing a lat/lng point, or null if none.
+ * Uses bounding-box check first for speed, then point-in-polygon.
+ */
+function findSkycellAt(lat: number, lng: number, skycells: Skycell[]): Skycell | null {
+  for (const cell of skycells) {
+    const ring = cell.ring;
+    // Quick bbox check
+    const minLng = ring[0][0];
+    const maxLng = ring[1][0];
+    const minLat = ring[0][1];
+    const maxLat = ring[2][1];
+    if (lng < minLng || lng > maxLng || lat < minLat || lat > maxLat) continue;
+    // Point in polygon (ray casting on [lng,lat] ring)
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+      const xi = ring[i][0], yi = ring[i][1];
+      const xj = ring[j][0], yj = ring[j][1];
+      const intersect = ((yi > lat) !== (yj > lat)) &&
+        (lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    if (inside) return cell;
+  }
+  return null;
+}
+
+/**
+ * Collects the IDs of all closed skycells that the planned route's waypoints
+ * pass through. Returns empty array if none.
+ */
+function closedCellsOnRoute(waypoints: GeoPoint[], skycells: Skycell[], closedCells: ClosedCellSet): string[] {
+  if (closedCells.size === 0) return [];
+  const result = new Set<string>();
+  for (const wp of waypoints) {
+    const cell = findSkycellAt(wp.lat, wp.lng, skycells);
+    if (cell && closedCells.has(cell.id)) {
+      result.add(cell.id);
+    }
+  }
+  return [...result];
+}
+
 export interface PlanRouteOptions {
   zones: AirspaceZone[];
   marginM?: number;
   spacingM?: number;
+  /** Skycells with risk scores — used to weight the A* cost function. */
+  skycells?: Skycell[];
+  /** Set of closed cell IDs — routes through these are rejected. */
+  closedCells?: ClosedCellSet;
 }
 
 /**
@@ -211,11 +261,20 @@ export function planRoute(start: GeoPoint, goal: GeoPoint, options: PlanRouteOpt
   };
 
   const freeNodes = new Map<string, { col: number; row: number; vertex: LatLngVertex }>();
+  const skycells = options.skycells ?? [];
+  const closedCells = options.closedCells ?? new Set<string>();
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
       const vertex = vertexOf(col, row);
       const latLng = { lat: bounds.minLat + row * latSpacing, lng: bounds.minLng + col * lngSpacing };
       if (!isBlocked(latLng, vertex, obstacles, marginM)) {
+        // Reject nodes inside closed skycells
+        if (closedCells.size > 0 && skycells.length > 0) {
+          const cell = findSkycellAt(latLng.lat, latLng.lng, skycells);
+          if (cell && closedCells.has(cell.id)) {
+            continue; // Closed cell — node is not free
+          }
+        }
         freeNodes.set(`${col}:${row}`, { col, row, vertex });
       }
     }
@@ -342,6 +401,19 @@ export function planRoute(start: GeoPoint, goal: GeoPoint, options: PlanRouteOpt
       } else if (insideSandbox(nextNode.vertex, nextLatLng)) {
         factor = SANDBOX_COST_FACTOR;
       }
+      // Skycell risk adds to the cost: higher risk → more expensive transit.
+      // The A* planner avoids high-risk cells when a lower-risk alternative exists.
+      if (skycells.length > 0) {
+        const cell = findSkycellAt(nextLatLng.lat, nextLatLng.lng, skycells);
+        if (cell) {
+          // Risk is 0-100; weight it so a cell at risk=100 roughly doubles the cost
+          factor += RISK_COST_WEIGHT * (cell.risk / 100);
+          // Closed cells are already pruned from freeNodes, but double-check here
+          if (closedCells.has(cell.id)) {
+            continue;
+          }
+        }
+      }
       const tentativeG = currentG + stepCost * factor;
       if (tentativeG < (gScores.get(nextKey) ?? Number.POSITIVE_INFINITY)) {
         gScores.set(nextKey, tentativeG);
@@ -352,6 +424,13 @@ export function planRoute(start: GeoPoint, goal: GeoPoint, options: PlanRouteOpt
   }
 
   if (!found) {
+    // Check if closed cells are blocking the route
+    if (closedCells.size > 0 && skycells.length > 0) {
+      const blockingCells = closedCellsOnRoute([start, goal], skycells, closedCells);
+      if (blockingCells.length > 0) {
+        throw new Error(`Route blocked by closed skycell(s): ${blockingCells.join(', ')}`);
+      }
+    }
     throw new Error('No compliant route found within lattice bounds');
   }
 
