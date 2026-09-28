@@ -2121,3 +2121,67 @@ Reasoning: S91 is pure addition — test code only, no production file touched, 
 Action: none. S91 closed. The named-but-uncovered M5 areas are recorded as an explicit gap, not
   papered over.
 ```
+
+---
+
+# PRD STATUS REVIEW — full re-score of S1–S129 @ `d4ba385`
+
+**Author:** orchestration lead · **Date:** 2026-09-27
+**Deliverable:** `docs/prd-status-review.md`
+
+## Why this ran
+
+The previous full matrix (`ws-d-prd-conformance.md`) was scored at `8a584fc`. HEAD is now `d4ba385`
+— five commits later (B3, B4, T12, S91, T13, T14, T15). The old matrix no longer described the repo.
+
+## Re-established state (all run live, not read from commit messages)
+
+```
+HEAD      d4ba385 T15: RFZ visibility + 3D full-screen layout + light theme overhaul
+tree      clean
+tsc -b    0
+eslint .  0 (--max-warnings=0)
+vitest    144 passed / 23 files        (was 141)
+pytest    131 passed                   (S91: >=60 required -> MET on count)
+ruff      server scripts tests -> 0
+```
+
+## Verdict rollup
+
+| Verdict | Count | Was @ 8a584fc |
+|---|---|---|
+| MET | **34** | 7 |
+| PARTIAL | **21** | 18 |
+| NOT MET | **13** | 39 |
+| NOT ATTEMPTED | **59** | 63 |
+| UNVERIFIED | **2** | 2 |
+
+## Method note
+
+Verdicts were re-derived from source, not from commit messages. That mattered: two of T14/T15's
+own headline claims did not survive a grep (see defects below).
+
+## Defects found during the review
+
+1. **T13/T14/T15 are unlogged.** No TRACE entry, no vault note. Same failure class as STEP 0 run 2.
+2. **T15 light theme contradicts PRD FR-OP-V1** ("dark theme"). `--color-bg` -> `#f5f6f8`,
+   Mapbox `dark-v11` -> `streets-v12`, only `:root` light tokens, no `prefers-color-scheme`.
+   README still says "A dark tactical 2D/3D airspace console". Code, PRD and README disagree.
+3. **Skycell grid drift.** Frontend `SKYCELL_SIZE_M = 500` (bounds 22.15–22.60N / 113.82–114.52E)
+   vs `server/agents.py` `SKYCELL_SIZE_M = 600.0` (bounds 22.255 / 114.095). "Cell" means two
+   different things in the negotiation engine and on the map. Correctness bug.
+4. **T14 claims "risk scoring" — none exists.** `grep risk_score|riskScore` across `server/` and
+   `src/` -> 0 hits. S43 stays NOT MET.
+5. **S36 is PARTIAL, not MET.** `wind_cost_factor()` exists and is probed (`server/weather.py:112`)
+   but is not wired into the agent planner; its own docstring calls per-segment weighting a follow-up.
+6. **PRD self-contradiction on zone counts** (carried forward, still open): S98/S101 demand 286
+   (261+25); S99 demands dedupe. Raw CAD pack has 286 features incl. 2 byte-identical duplicates,
+   so correct dedupe = 284 (260+24). Both cannot hold. S98/S99 NOT MET as literally written.
+
+## Priority finding
+
+**The PRD declares no per-criterion priority.** §17: "No criterion is optional. No criterion may be
+skipped." All 129 are P0 by declaration. The only ordering signal is milestone sequencing, which is
+what `docs/prd-status-review.md` uses as its ordering key (P0 in-scope / P1 later-milestone /
+P0-BLOCKED).
+

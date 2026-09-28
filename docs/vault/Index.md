@@ -57,8 +57,9 @@ related: []
 
 - [[README]] — BUSTARON Vault · status: stable
 
-### Unknown (1)
+### Unknown (2)
 
+- [[prd-status-review-s1-s129]] — PRD Status Review — full re-score of S1–S129 @ `d4ba385`
 - [[t12-hko-weather-tab-3node-poa-3d-view]] — T12 — HKO weather evidence tab, real 3-node PoA, 3D View
 
 ## Folder convention
@@ -69,4 +70,4 @@ related: []
 - `bugs/` — Bug notes
 - `sessions/` — Session notes
 
-_21 note(s) · vault: `docs/vault`_
+_22 note(s) · vault: `docs/vault`_
