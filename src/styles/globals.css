@@ -1394,3 +1394,489 @@ h3 {
   }
 }
 
+/* ---------- Flight Detail (PRD §11.2 operator — Flights view) ---------- */
+.flight-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.flight-detail__header {
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.flight-detail__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.flight-detail__tab {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--color-border);
+  background: rgba(2, 6, 23, 0.4);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+  min-width: 96px;
+}
+
+.flight-detail__tab--active {
+  border-color: var(--color-cyan);
+  background: rgba(8, 47, 73, 0.55);
+  color: var(--color-cyan);
+}
+
+.flight-detail__tab strong {
+  font-size: var(--font-size-small);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.flight-detail__columns {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr 1fr 1.4fr auto;
+  gap: var(--space-3);
+  padding: 0 var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.flight-detail__list {
+  display: grid;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.flight-detail__row {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(2, 6, 23, 0.42);
+  overflow: hidden;
+}
+
+.flight-detail__row--open {
+  border-color: var(--color-cyan);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.18);
+}
+
+.flight-detail__row-toggle {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr 1fr 1.4fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: var(--space-3);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.flight-detail__cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-small);
+}
+
+.flight-detail__cell--operator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.flight-detail__avatar {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, rgba(8, 47, 73, 0.85), rgba(15, 23, 42, 0.85));
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-cyan);
+  font-weight: 800;
+  font-size: var(--font-size-small);
+}
+
+.flight-detail__chevron {
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+  margin-left: var(--space-2);
+}
+
+.flight-detail__body {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  background: rgba(2, 6, 23, 0.55);
+}
+
+@media (min-width: 1024px) {
+  .flight-detail__body {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, 1fr);
+  }
+
+  .flight-detail__rules-wrap {
+    grid-column: 1 / -1;
+  }
+}
+
+.flight-detail__map,
+.flight-detail__cards {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.flight-detail__sub-title {
+  margin: 0;
+  font-size: var(--font-size-small);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.flight-detail__card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+@media (min-width: 768px) {
+  .flight-detail__card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.flight-detail__card {
+  display: grid;
+  gap: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(2, 6, 23, 0.45);
+  padding: var(--space-3);
+}
+
+.flight-detail__card--auth {
+  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(120, 53, 15, 0.25);
+}
+
+.flight-detail__card--status {
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(127, 29, 29, 0.25);
+}
+
+.flight-detail__card--wide {
+  grid-column: 1 / -1;
+}
+
+.flight-detail__card-value {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-base);
+  font-weight: 800;
+}
+
+.flight-detail__status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-red);
+  box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.25);
+}
+
+.flight-detail__card-copy {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+  line-height: 1.5;
+}
+
+.flight-detail__actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.control-button--accent {
+  border-color: var(--color-cyan);
+  color: var(--color-cyan);
+  white-space: nowrap;
+}
+
+.control-button--accent:hover {
+  background: rgba(8, 47, 73, 0.6);
+}
+
+.flight-detail__rules,
+.flight-detail__contact {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.flight-detail__rules-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flight-detail__rules-title {
+  margin: 0;
+  font-size: var(--font-size-small);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.flight-detail__rules-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.flight-detail__rules-item,
+.flight-detail__rules-summary {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: rgba(2, 6, 23, 0.4);
+}
+
+.flight-detail__rules-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text);
+  font-size: var(--font-size-small);
+  cursor: pointer;
+  text-align: left;
+}
+
+.flight-detail__rules-toggle span:nth-child(3) {
+  margin-left: auto;
+  color: var(--color-muted);
+}
+
+.flight-detail__contact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 768px) {
+  .flight-detail__contact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .flight-detail__contact {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.flight-detail__contact .detail-card {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.flight-detail__contact .detail-card dd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.flight-detail__contact .link-button {
+  font-size: var(--font-size-xs);
+}
+
+/* ---------- Airspace Management (PRD §11.3 admin — Airspace) ---------- */
+.airspace-management {
+  padding: 0;
+}
+
+.airspace-management__layout {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1024px) {
+  .airspace-management__layout {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+}
+
+.airspace-sidebar {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(2, 6, 23, 0.45);
+}
+
+.airspace-sidebar__link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-size: var(--font-size-small);
+  cursor: pointer;
+  text-align: left;
+}
+
+.airspace-sidebar__link:hover {
+  background: rgba(8, 47, 73, 0.4);
+}
+
+.airspace-sidebar__link--active {
+  background: rgba(8, 47, 73, 0.65);
+  color: var(--color-cyan);
+  font-weight: 800;
+}
+
+.airspace-sidebar__badge {
+  background: rgba(15, 23, 42, 0.65);
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-2);
+  font-size: var(--font-size-2xs);
+  color: var(--color-muted);
+}
+
+.airspace-management__main {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.airspace-management__map {
+  display: grid;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(8, 47, 73, 0.18), rgba(2, 6, 23, 0.55));
+  padding: var(--space-3);
+  position: relative;
+  min-height: 180px;
+  overflow: hidden;
+}
+
+.airspace-management__map-label {
+  margin: 0;
+  font-weight: 800;
+}
+
+.airspace-management__map-grid {
+  position: absolute;
+  inset: var(--space-3);
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: var(--space-2);
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.airspace-management__map-grid span {
+  border: 1px solid rgba(34, 211, 238, 0.15);
+  border-radius: var(--radius-sm);
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.airspace-management__facets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.airspace-management__grid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.airspace-card {
+  display: grid;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(2, 6, 23, 0.55);
+  padding: var(--space-3);
+  position: relative;
+  overflow: hidden;
+}
+
+.airspace-card__header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.airspace-card__glyph {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  background: rgba(8, 47, 73, 0.55);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-cyan);
+  font-weight: 800;
+}
+
+.airspace-card__title-row {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+}
+
+.airspace-card__title {
+  margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.airspace-card__status {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+  margin-top: var(--space-1);
+}
+
+.airspace-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+

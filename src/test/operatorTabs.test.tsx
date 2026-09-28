@@ -56,7 +56,7 @@ describe('operator console tabs (PRD S111)', () => {
     }
   });
 
-  it('keeps the sidebar disclosure working with eight operator entries', () => {
+  it('keeps the sidebar disclosure working with the operator entries', () => {
     render(<App />);
 
     const sidebar = screen.getByRole('complementary', { name: /primary navigation/i });
@@ -68,7 +68,9 @@ describe('operator console tabs (PRD S111)', () => {
 
     const nav = document.getElementById('sidebar-nav-sections');
     expect(nav).not.toBeNull();
-    // S111: eight operator entries (the two admin entries are hidden).
-    expect(nav?.querySelectorAll('button')).toHaveLength(8);
+    // Operator sidebar: PRD §11.2.2 seven entries + the shared 3D View (S111) +
+    // the Flight Detail workspace entry introduced this session. Admin-only
+    // entries (Approvals Queue, Admin Control, Airspace Mgmt) are hidden here.
+    expect(nav?.querySelectorAll('button')).toHaveLength(9);
   });
 });

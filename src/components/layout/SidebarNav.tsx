@@ -83,11 +83,25 @@ const navItems: NavItem[] = [
     icon: '3DV',
   },
   {
+    section: 'flightDetail',
+    label: 'Flight Detail',
+    description: 'Operator flight list, rules and pilot contact',
+    role: 'operator',
+    icon: 'FLD',
+  },
+  {
     section: 'approvals',
     label: 'Approvals Queue',
     description: 'Escrowed flight requests',
     role: 'admin',
     icon: 'APR',
+  },
+  {
+    section: 'airspace',
+    label: 'Airspace Mgmt',
+    description: 'Sites, KPIs and violation badges',
+    role: 'admin',
+    icon: 'AIR',
   },
   {
     section: 'admin',

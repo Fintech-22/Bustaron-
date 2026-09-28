@@ -17,7 +17,9 @@ export type NavSection =
   | 'alerts'
   | 'weather'
   | 'approvals'
-  | 'admin';
+  | 'admin'
+  | 'flightDetail'
+  | 'airspace';
 
 export type DroneStatus = 'nominal' | 'warning' | 'critical' | 'grounded';
 

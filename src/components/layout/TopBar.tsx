@@ -22,6 +22,8 @@ const sectionTitleById: Record<NavSection, string> = {
   weather: 'Weather and 3D situational awareness',
   approvals: 'Administrative approvals queue',
   admin: 'Administrative compliance overview',
+  flightDetail: 'Operator flight detail workspace',
+  airspace: 'Administrative airspace management',
 };
 
 const operatorOptions: { id: string; name: string }[] = [

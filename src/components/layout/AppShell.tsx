@@ -11,6 +11,8 @@ import { ApprovalsQueuePanel } from '../panels/ApprovalsQueuePanel';
 import { CreditWalletPanel } from '../panels/CreditWalletPanel';
 import { EsgScorecardPanel } from '../panels/EsgScorecardPanel';
 import { FleetPanel } from '../panels/FleetPanel';
+import { FlightDetailPanel } from '../panels/FlightDetailPanel';
+import { AirspaceManagementPanel } from '../panels/AirspaceManagementPanel';
 import { FlightPlansPanel } from '../panels/FlightPlansPanel';
 import { MissionPanel } from '../panels/MissionPanel';
 import { StatusPanel } from '../panels/StatusPanel';
@@ -110,9 +112,23 @@ export function AppShell(): JSX.Element {
             {activeSection === 'analytics' && <AnalyticsPanel />}
             {activeSection === 'alerts' && <AlertsPanel />}
             {activeSection === 'weather' && <WeatherPanel />}
+            {activeSection === 'flightDetail' && activeRole === 'operator' && <FlightDetailPanel />}
+            {activeSection === 'flightDetail' && activeRole !== 'operator' && (
+              <EmptyState
+                title="Operator role required"
+                message="Switch to Operator in the top bar to view the flight detail workspace."
+              />
+            )}
+            {activeSection === 'airspace' && activeRole === 'admin' && <AirspaceManagementPanel />}
+            {activeSection === 'airspace' && activeRole !== 'admin' && (
+              <EmptyState
+                title="Admin role required"
+                message="Switch to Admin in the top bar to view the airspace management console."
+              />
+            )}
             {activeSection === 'approvals' && activeRole === 'admin' && <ApprovalsQueuePanel expanded />}
             {activeSection === 'admin' && activeRole === 'admin' && <AdminPanel expanded />}
-            {(activeSection === 'admin' || activeSection === 'approvals') && activeRole !== 'admin' && (
+            {(activeSection === 'admin' || activeSection === 'approvals' || activeSection === 'airspace') && activeRole !== 'admin' && (
               <EmptyState
                 title="Admin role required"
                 message="Switch to Admin in the top bar to view the approvals queue and compliance controls."
