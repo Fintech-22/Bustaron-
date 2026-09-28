@@ -123,6 +123,58 @@ function buildOverlay(map: MapboxMapInstance): void {
   map.addSource(SOURCE.planned, { type: 'geojson', data: plannedRouteToGeoJson(null) });
   map.addSource(SOURCE.drones, { type: 'geojson', data: dronesToGeoJson([], '') });
 
+  // Zones first (bottom layer) so skycells and other overlays render on top.
+  map.addLayer({
+    id: LAYER.zoneFill,
+    type: 'fill',
+    source: SOURCE.zones,
+    paint: {
+      'fill-color': ZONE_COLORS,
+      'fill-opacity': ['match', ['get', 'kind'], 'rfz', 0.45, 'sensitive', 0.4, 'corridor', 0.1, 'heliport', 0.12, 'sandbox', 0.2, 0.18],
+    },
+  });
+  // PRD FR-OP-V3 / S106: restricted (RFZ) zones get the red diagonal hatch on
+  // top of the translucent fill; sandbox zones keep the amber outline from
+  // `zoneLine`'s kind expression.
+  map.addLayer({
+    id: LAYER.zoneHatch,
+    type: 'fill',
+    source: SOURCE.zones,
+    filter: ['==', ['get', 'kind'], 'rfz'],
+    paint: { 'fill-pattern': 'rfz-hatch', 'fill-opacity': 1.0 },
+  });
+  map.addLayer({
+    id: LAYER.zoneLine,
+    type: 'line',
+    source: SOURCE.zones,
+    paint: {
+      'line-color': ZONE_COLORS,
+      'line-width': ['match', ['get', 'kind'], 'rfz', 3, 'sensitive', 2.5, 'sandbox', 1.5, 1.4],
+      'line-opacity': 1.0,
+    },
+  });
+
+  // Zone labels for clear identification (RFZ/sensitive especially)
+  map.addLayer({
+    id: 'zone-label',
+    type: 'symbol',
+    source: SOURCE.zones,
+    minzoom: 11,
+    layout: {
+      'text-field': ['get', 'name'],
+      'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
+      'text-size': 10,
+      'text-anchor': 'center',
+      'text-allow-overlap': false,
+    },
+    paint: {
+      'text-color': ['match', ['get', 'kind'], 'rfz', '#dc2626', 'sensitive', '#9333ea', 'sandbox', '#d97706', '#0284c7'],
+      'text-halo-color': '#ffffff',
+      'text-halo-width': 1.5,
+    },
+  });
+
+  // Skycells on top of zones
   map.addLayer({
     id: LAYER.cellFill,
     type: 'fill',
@@ -147,64 +199,6 @@ function buildOverlay(map: MapboxMapInstance): void {
     paint: {
       'line-color': ['case', ['get', 'closed'], '#818cf8', 'rgba(148,163,184,0.25)'],
       'line-width': ['case', ['get', 'closed'], 1.2, 0.6],
-    },
-  });
-
-  map.addLayer({
-    id: LAYER.zoneFill,
-    type: 'fill',
-    source: SOURCE.zones,
-    paint: {
-      'fill-color': ZONE_COLORS,
-      'fill-opacity': ['match', ['get', 'kind'], 'rfz', 0.28, 'sensitive', 0.25, 'corridor', 0.08, 'heliport', 0.1, 'sandbox', 0.14, 0.18],
-    },
-  });
-  // PRD FR-OP-V3 / S106: restricted (RFZ) zones get the red diagonal hatch on
-  // top of the translucent fill; sandbox zones keep the amber outline from
-  // `zoneLine`'s kind expression.
-  //
-  // NOTE — no `beforeId` here on purpose. `Map#addLayer(layer, beforeId)` only
-  // accepts an id that ALREADY exists: given an unknown one it fires
-  // `Layer with id "..." does not exist on this map.` and returns without adding
-  // the layer. Anchoring this to `zoneLine` (which is added a few lines below)
-  // therefore dropped the hatch silently and logged an error on every style
-  // load. Stacking here comes from insertion order instead, which already yields
-  // the intended fill → hatch → line.
-  map.addLayer({
-    id: LAYER.zoneHatch,
-    type: 'fill',
-    source: SOURCE.zones,
-    filter: ['==', ['get', 'kind'], 'rfz'],
-    paint: { 'fill-pattern': 'rfz-hatch', 'fill-opacity': 0.9 },
-  });
-  map.addLayer({
-    id: LAYER.zoneLine,
-    type: 'line',
-    source: SOURCE.zones,
-    paint: {
-      'line-color': ZONE_COLORS,
-      'line-width': ['match', ['get', 'kind'], 'rfz', 2.5, 'sensitive', 2, 'sandbox', 1.5, 1.4],
-      'line-opacity': 0.95,
-    },
-  });
-
-  // Zone labels for clear identification (RFZ/sensitive especially)
-  map.addLayer({
-    id: 'zone-label',
-    type: 'symbol',
-    source: SOURCE.zones,
-    minzoom: 10,
-    layout: {
-      'text-field': ['get', 'name'],
-      'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
-      'text-size': 10,
-      'text-anchor': 'center',
-      'text-allow-overlap': false,
-    },
-    paint: {
-      'text-color': ['match', ['get', 'kind'], 'rfz', '#fb7185', 'sensitive', '#c084fc', 'sandbox', '#fbbf24', '#38bdf8'],
-      'text-halo-color': '#05080c',
-      'text-halo-width': 1.5,
     },
   });
 

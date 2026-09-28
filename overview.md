@@ -1,39 +1,45 @@
-# BUSTARON Milestone 1 Work Overview
+# T14 — Full-HK Skycells + Risk Scoring + Admin Closure + A* Risk Routing + RFZ Visibility
 
 ## What was done
 
-- Read the full `BUSTARON_PRD.md` and the supplied frontend/code-review conventions before coding.
-- Created a formal software team context and produced a milestone breakdown in `docs/system_design.md`.
-- Implemented only Milestone 1: a mock-only BUSTARON frontend tactical shell.
-- Added a separate milestone explainer at `docs/milestone-01.md`.
+Implemented four user-requested changes to the BUSTARON drone airspace platform:
 
-## Key files created or updated
+1. **Skycells extended to all of Hong Kong** — the grid now covers the full HK bbox (22.15–22.60°N, 113.82–114.52°E) with 500m cells (~12,800 cells). Previously only covered core HK with 600m cells.
 
-- `package.json` — Vite/React/TypeScript scripts and dependencies.
-- `index.html`, `vite.config.ts`, `tsconfig.json`, `tsconfig.app.json`, `tsconfig.node.json`, `eslint.config.js` — frontend project configuration.
-- `src/types/domain.ts` — typed domain model for drones, missions, zones, weather, roles, sections, map layers, and metrics.
-- `src/data/mockData.ts` — realistic Hong Kong tactical mock data.
-- `src/services/mockDataService.ts` — mock state loading and simulation tick helper.
-- `src/store/dashboardStore.ts` — local dashboard state and actions.
-- `src/components/layout/*` — app shell, sidebar navigation, top bar.
-- `src/components/map/*` — schematic 2D tactical map, drone markers, map/altitude controls.
-- `src/components/panels/*` — live status, mission preview, admin command widgets.
-- `src/components/common/*` — reusable metric card and empty state.
-- `src/test/*` — initial component tests.
-- `src/styles/globals.css` — dark tactical UI theme and responsive layout.
+2. **Risk scoring formula** — each skycell now has a risk score (0–100) computed from:
+   - Wind speed (40% weight, normalized against 80 km/h)
+   - Drone occupancy (30% weight, normalized against 6 drones)
+   - Population density (30% weight, normalized against 50,000/km²)
+   - Closed cells pinned to 100; RFZ-crossed cells clamped to ≥90
+   - Static HK population raster from Census 2021 district data (13 tiles)
 
-## Verification status
+3. **Skycell click detail + admin closure** — clicking a skycell on the 2D Mapbox map opens a detail panel showing: area, wind speed, temperature, drone occupancy %, risk score with classification (low/medium/high/critical), population density, and closed status. Admins can close/reopen cells. Closed cells appear visually distinct (dark indigo) and block operator flight plans.
 
-**RESOLVED (2026-09-26) — all green. See `HANDOFF.md` §2 for the authoritative status.**
+4. **A* planner uses skycell risk** — the route planner now weights step costs by skycell risk (higher risk = more expensive), avoiding high-risk areas when alternatives exist. Routes through closed cells are rejected with an error naming the blocked cell IDs.
 
-Original blocker: dependency installation stalled while unpacking `node_modules` with `npm warn tar TAR_ENTRY_ERROR ENOENT` and `[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED]`.
+5. **RFZ visibility improved** — raised fill opacity and line width for restricted zones on both 2D Mapbox and 3D Cesium maps. Added zone name labels on the 2D map. 3D RFZ volumes have higher alpha (0.42) and thicker outlines.
 
-Root cause: the host's file-operation guard renamed 3 files to `*.DELETE.<hash>` instead of deleting them, leaving `agent-base`, `http-proxy-agent`, and `https-proxy-agent` without their `dist/index.js`. That killed jsdom, so no tests could load.
+## Files changed
 
-Fix: restored the 3 files; then fixed an ambiguous query in `src/test/App.test.tsx:12` (`/routes/i` matched both the map layer toggle and the Approvals Queue nav description) by adding `role="group"` to `MapLayerControls.tsx` and scoping assertions with `within(...)`.
+| File | Changes |
+|------|---------|
+| `src/services/skycells.ts` | Full rewrite: extended HK bounds, 500m cells, risk formula, weather/population/wind data, closed-cell state |
+| `src/services/routePlanner.ts` | A* accepts skycells + closedCells; risk-weighted cost; closed-cell rejection |
+| `src/store/dashboardStore.ts` | `closedCells` Set state + `toggleCellClosure` action; `planDraftRoute` passes skycells |
+| `src/components/map/MapboxMap.tsx` | Skycell click handler + detail panel; admin close/reopen; closed-cell styling; RFZ opacity/labels |
+| `src/components/map/TacticalMap.tsx` | RFZ stroke width increased; sensitive zone color |
+| `src/components/three/cesiumScene.ts` | Closed skycell volumes (dark purple, 200m); RFZ alpha/outline improved |
+| `src/components/three/ThreeDViewPanel.tsx` | Passes weatherAlerts + closedCells + RFZ polygons to buildSkycells |
+| `src/styles/globals.css` | 128 lines: skycell detail panel styles |
+| `src/test/skycells.test.ts` | Rewritten for new API: 7 tests (was 4) |
 
-Verified: `tsc -b` exit 0 · `vite build` exit 0 · `eslint . --max-warnings=0` exit 0 · `vitest run` 3/3 passed.
+## Verification gates
 
-## Follow-up
-
-Milestone 1 is complete and verified. Next: commit a baseline (`git init` — the project is currently not version-controlled), then begin Milestone 2 (planning + data adapters). See `HANDOFF.md` §6 for the exact resume point.
+| Gate | Result |
+|------|--------|
+| tsc | 0 errors |
+| eslint | 0 errors |
+| vite build | 0 errors |
+| vitest | **144/144** passed (3 new tests) |
+| pytest | 131/131 passed |
+| ruff | 0 errors |

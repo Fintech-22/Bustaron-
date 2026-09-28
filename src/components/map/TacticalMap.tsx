@@ -19,10 +19,10 @@ const mapBounds = {
 };
 
 const riskColorByName: Record<RiskLevel, string> = {
-  low: '#4ade80',
-  medium: '#fbbf24',
-  high: '#fb7185',
-  critical: '#ef4444',
+  low: '#16a34a',
+  medium: '#d97706',
+  high: '#ea580c',
+  critical: '#dc2626',
 };
 
 function projectPoint(point: GeoPoint): ProjectedPoint {
@@ -59,8 +59,7 @@ export function TacticalMap(): JSX.Element {
         <div>
           <p className="panel__eyebrow">2D Hong Kong tactical map</p>
           <h2 id="tactical-map-title">Victoria Harbour operating picture</h2>
-          <p className="helper-text" id="tactical-map-description">Schematic 2D view. Zones from the active data source; dashed cyan line shows the planned A* route.</p>
-        </div>
+          <p className="helper-text" id="tactical-map-description">Schematic 2D view. Zones from the active data source; dashed cyan line shows the planned A* route.</p>        </div>
         <button type="button" className="control-button" onClick={tick}>
           <span aria-hidden="true">TICK</span> Advance mock tick
         </button>
@@ -86,7 +85,7 @@ export function TacticalMap(): JSX.Element {
         >
           <defs>
             <pattern id="fine-grid" width="10" height="10" patternUnits="userSpaceOnUse">
-              <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(148,163,184,0.14)" strokeWidth="0.16" />
+              <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(0,0,0,0.06)" strokeWidth="0.16" />
             </pattern>
             {/*
               PRD FR-OP-V3 / S106: restricted zones are red outlines with DIAGONAL
@@ -102,18 +101,18 @@ export function TacticalMap(): JSX.Element {
               <line x1="0" y1="0" x2="0" y2="1.6" stroke="var(--color-blue)" strokeWidth="0.35" />
             </pattern>
             <linearGradient id="water-gradient" x1="0" x2="1" y1="0" y2="1">
-              <stop offset="0%" stopColor="#0b3555" />
-              <stop offset="100%" stopColor="#082236" />
+              <stop offset="0%" stopColor="#b8d4e8" />
+              <stop offset="100%" stopColor="#a0c4e0" />
             </linearGradient>
           </defs>
-          <rect width="100" height="100" fill="#07101a" />
+          <rect width="100" height="100" fill="#f0f4f8" />
           {activeLayers.grid && <rect width="100" height="100" fill="url(#fine-grid)" />}
           <path d="M0,54 C17,47 28,55 43,50 C58,45 68,43 82,49 C90,52 95,50 100,46 L100,100 L0,100 Z" fill="url(#water-gradient)" opacity="0.78" />
-          <path d="M0,0 L100,0 L100,44 C91,48 84,45 76,42 C60,36 45,39 31,43 C18,47 9,42 0,46 Z" fill="#0f1f2e" />
-          <path d="M0,62 C17,55 30,62 44,58 C61,54 75,56 100,51 L100,100 L0,100 Z" fill="#0b1725" opacity="0.92" />
-          <text x="9" y="33" fill="rgba(229,237,247,0.55)" fontSize="3.3">KOWLOON</text>
-          <text x="42" y="73" fill="rgba(229,237,247,0.55)" fontSize="3.3">HONG KONG ISLAND</text>
-          <text x="38" y="55" fill="rgba(229,237,247,0.42)" fontSize="2.7">VICTORIA HARBOUR</text>
+          <path d="M0,0 L100,0 L100,44 C91,48 84,45 76,42 C60,36 45,39 31,43 C18,47 9,42 0,46 Z" fill="#e8e0d0" />
+          <path d="M0,62 C17,55 30,62 44,58 C61,54 75,56 100,51 L100,100 L0,100 Z" fill="#d4e8d0" opacity="0.92" />
+          <text x="9" y="33" fill="rgba(0,0,0,0.35)" fontSize="3.3">KOWLOON</text>
+          <text x="42" y="73" fill="rgba(0,0,0,0.35)" fontSize="3.3">HONG KONG ISLAND</text>
+          <text x="38" y="55" fill="rgba(0,0,0,0.3)" fontSize="2.7">VICTORIA HARBOUR</text>
           {/*
             PRD FR-OP-V3 / S106: restricted (RFZ) zones render as red outlines with
             diagonal hatching; sandbox zones render as amber outlines. Other zone

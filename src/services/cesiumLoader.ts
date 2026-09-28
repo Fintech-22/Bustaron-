@@ -30,19 +30,30 @@ export const CESIUM_LOAD_TIMEOUT_MS = 25_000;
 export interface CesiumEnv {
   open3dhkKey: string | null;
   ionToken: string | null;
+  /** HK Data Portal API key for the 3D building tileset (data.map.gov.hk). */
+  hkDataKey: string | null;
 }
 
 /** Reads the two optional keys. Never throws; blank/garbage degrades to null. */
 export function readCesiumEnv(): CesiumEnv {
   const open3dhkKey = (import.meta.env.VITE_OPEN3DHK_KEY as string | undefined)?.trim() || null;
   const ionToken = (import.meta.env.VITE_CESIUM_ION_TOKEN as string | undefined)?.trim() || null;
-  return { open3dhkKey, ionToken };
+  const hkDataKey = (import.meta.env.VITE_HK_DATA_KEY as string | undefined)?.trim() || null;
+  return { open3dhkKey, ionToken, hkDataKey };
 }
 
 /** PRD §5.4's tileset URL, verbatim (the key is URL-encoded, never interpolated raw). */
 export function open3dhkTilesetUrl(apiKey: string): string {
   return `https://3d.map.gov.hk/api/3d-visualisation-map/tileset.json?key=${encodeURIComponent(apiKey)}`;
 }
+
+/** HK Data Portal 3D building tileset (data.map.gov.hk). */
+export function hkDataBuildingTilesetUrl(apiKey: string): string {
+  return `https://data.map.gov.hk/api/3d-data/3dsd/WGS84/building/tileset.json?key=${encodeURIComponent(apiKey)}`;
+}
+
+/** HK LandsD basemap imagery (no key required). */
+export const HK_LANDSD_IMAGERY_URL = 'https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/imagery/WGS84/{z}/{x}/{y}.png';
 
 let pending: Promise<typeof Cesium> | null = null;
 

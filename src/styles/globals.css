@@ -17,25 +17,25 @@
    written literally in the queries below and mirrored in this comment.
    ========================================================================== */
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
-  /* --- Colour: dark tactical identity (unchanged palette) --- */
-  --color-bg: #05080c;
-  --color-bg-elevated: #09111b;
-  --color-panel: #0d1724;
-  --color-panel-strong: #111f31;
-  --color-border: rgba(148, 163, 184, 0.24);
-  --color-border-strong: rgba(148, 163, 184, 0.42);
-  --color-text: #e5edf7;
-  --color-muted: #9fb0c5;
-  --color-subtle: #6f8197;
-  --color-radar: #4ade80;
-  --color-cyan: #38bdf8;
-  --color-amber: #fbbf24;
-  --color-red: #fb7185;
-  --color-blue: #60a5fa;
-  --color-purple: #c084fc;
-  --shadow-panel: 0 18px 50px rgba(0, 0, 0, 0.36);
+  /* --- Colour: light theme matching reference design --- */
+  --color-bg: #f5f6f8;
+  --color-bg-elevated: #ffffff;
+  --color-panel: #ffffff;
+  --color-panel-strong: #f0f1f3;
+  --color-border: rgba(0, 0, 0, 0.1);
+  --color-border-strong: rgba(0, 0, 0, 0.18);
+  --color-text: #1a1d23;
+  --color-muted: #5a6472;
+  --color-subtle: #8a94a6;
+  --color-radar: #16a34a;
+  --color-cyan: #0891b2;
+  --color-amber: #d97706;
+  --color-red: #dc2626;
+  --color-blue: #2563eb;
+  --color-purple: #9333ea;
+  --shadow-panel: 0 2px 12px rgba(0, 0, 0, 0.08);
 
   /* --- Spacing scale: 0.25rem increments (4px base unit) --- */
   --space-1: 0.25rem;
@@ -114,9 +114,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent 34rem),
-    linear-gradient(135deg, #05080c 0%, #08111d 48%, #05080c 100%);
+  background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-family-body);
   font-size: var(--font-size-body);
@@ -175,8 +173,8 @@ h3 {
    brand row + toggle must fit in one small band so the map lands above the
    fold at 320px (TRACE T7 finding 3). */
 .sidebar {
-  border-bottom: 1px solid var(--color-border);
-  background: rgba(6, 13, 22, 0.94);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: #1e1e2e;
   padding: var(--space-3) var(--space-4) var(--space-4);
 }
 
@@ -243,9 +241,16 @@ h3 {
   margin: 0;
   font-size: var(--font-size-lg);
   letter-spacing: 0.08em;
+  color: #e2e8f0;
 }
 
 .sidebar__subtitle,
+.sidebar .label-text,
+.sidebar .helper-text {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: var(--font-size-small);
+}
+
 .label-text,
 .helper-text {
   color: var(--color-muted);
@@ -255,7 +260,7 @@ h3 {
 .nav-group__label {
   grid-column: 1 / -1;
   margin: 0 0 var(--space-2);
-  color: var(--color-subtle);
+  color: rgba(255, 255, 255, 0.4);
   font-size: var(--font-size-xs);
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -276,9 +281,35 @@ h3 {
   white-space: nowrap;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: rgba(15, 23, 42, 0.72);
+  background: var(--color-panel-strong);
   color: var(--color-text);
   transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
+}
+
+/* Buttons inside the dark sidebar need light text */
+.sidebar .nav-button,
+.sidebar .control-button {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.sidebar .nav-button:hover,
+.sidebar .control-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.sidebar .nav-button[aria-current='page'] {
+  background: rgba(8, 145, 178, 0.25);
+  border-color: rgba(8, 145, 178, 0.6);
+  color: #67e8f9;
+}
+
+.sidebar .nav-button:disabled {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.3);
 }
 
 .nav-button {
@@ -295,15 +326,15 @@ h3 {
 .control-button:hover,
 .link-button:hover {
   border-color: var(--color-border-strong);
-  background: rgba(30, 41, 59, 0.8);
+  background: var(--color-bg);
 }
 
 .nav-button[aria-current='page'],
 .role-button[aria-pressed='true'],
 .layer-toggle[aria-pressed='true'] {
-  border-color: rgba(74, 222, 128, 0.72);
-  background: rgba(34, 197, 94, 0.12);
-  color: #f1f5f9;
+  border-color: var(--color-cyan);
+  background: rgba(8, 145, 178, 0.08);
+  color: var(--color-cyan);
 }
 
 /* Explicit disabled state for every button variant. */
@@ -315,7 +346,7 @@ h3 {
   cursor: not-allowed;
   opacity: 0.5;
   border-color: var(--color-border);
-  background: rgba(15, 23, 42, 0.4);
+  background: var(--color-panel-strong);
   transform: none;
 }
 
@@ -331,8 +362,8 @@ h3 {
   gap: var(--space-4);
   padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--color-border);
-  background: rgba(8, 15, 25, 0.78);
-  backdrop-filter: blur(18px);
+  background: #ffffff;
+  backdrop-filter: none;
   position: static;
 }
 
@@ -547,7 +578,7 @@ h3 {
 .map-canvas {
   position: relative;
   min-height: var(--map-min-height);
-  background: #07101a;
+  background: #f0f4f8;
   isolation: isolate;
 }
 
@@ -1115,47 +1146,21 @@ h3 {
   position: fixed;
   inset: 0;
   z-index: 60;
-  display: flex;
-  flex-direction: column;
   background: var(--color-bg);
 }
 
-.three-d {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+.three-d--fullscreen {
+  position: relative;
+  width: 100%;
   height: 100%;
-}
-
-.three-d__bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-panel);
-}
-
-.three-d__eyebrow {
-  margin: 0;
-  font-size: var(--font-size-2xs);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--color-subtle);
-}
-
-.three-d__title {
-  margin: var(--space-1) 0 0;
-  font-size: var(--font-size-xl);
+  overflow: hidden;
 }
 
 .three-d__canvas {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  background: #07101a;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .three-d__canvas > * {
@@ -1163,53 +1168,167 @@ h3 {
   height: 100%;
 }
 
+/* Floating top bar — minimal, overlays the canvas */
+.three-d__topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  background: linear-gradient(to bottom, rgba(0,0,0,0.55), transparent);
+  pointer-events: none;
+}
+
+.three-d__topbar > * {
+  pointer-events: auto;
+}
+
+.three-d__topbar-info {
+  color: #fff;
+}
+
+.three-d__eyebrow {
+  margin: 0;
+  font-size: var(--font-size-2xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.6);
+}
+
+.three-d__title {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-xl);
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+
+.three-d__exit {
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: var(--radius-md);
+  background: rgba(0,0,0,0.4);
+  color: #fff;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+
+.three-d__exit:hover {
+  background: rgba(0,0,0,0.6);
+  border-color: rgba(255,255,255,0.5);
+}
+
+/* Floating panel toggle button */
+.three-d__panel-toggle {
+  position: absolute;
+  bottom: var(--space-4);
+  right: var(--space-4);
+  z-index: 11;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: var(--radius-md);
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.three-d__panel-toggle:hover {
+  background: rgba(0,0,0,0.7);
+  border-color: rgba(255,255,255,0.4);
+}
+
+.three-d__panel-toggle--open {
+  background: rgba(0,0,0,0.7);
+}
+
+/* Slide-in control panel */
 .three-d__panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
   align-items: flex-start;
   padding: var(--space-3) var(--space-4);
-  border-top: 1px solid var(--color-border);
-  background: var(--color-panel);
+  padding-bottom: calc(var(--space-3) + 52px);
+  background: linear-gradient(to top, rgba(0,0,0,0.75), rgba(0,0,0,0.5) 70%, transparent);
+  transform: translateY(100%);
+  opacity: 0;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.three-d__panel--open {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .three-d__panel .nav-group__label {
   flex-basis: 100%;
+  color: rgba(255,255,255,0.6);
+  font-size: var(--font-size-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin: 0 0 var(--space-1) 0;
 }
 
 .layer-button {
   display: grid;
   gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
+  border: 1px solid rgba(255,255,255,0.2);
   border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
-  color: var(--color-muted);
+  background: rgba(0,0,0,0.4);
+  color: rgba(255,255,255,0.6);
   text-align: left;
+  backdrop-filter: blur(4px);
 }
 
 .layer-button strong {
-  color: var(--color-text);
+  color: #fff;
   font-size: var(--font-size-sm);
 }
 
 .layer-button:hover {
-  border-color: var(--color-border-strong);
+  border-color: rgba(255,255,255,0.35);
 }
 
 .layer-button[aria-pressed='true'] {
   border-color: var(--color-cyan);
-  color: var(--color-text);
+  color: #fff;
+  background: rgba(56, 189, 248, 0.15);
 }
 
 .layer-button:disabled {
-  opacity: 0.55;
+  opacity: 0.4;
 }
 
 .three-d__status {
   flex-basis: 100%;
   display: grid;
   gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.three-d__status .helper-text {
+  color: rgba(255,255,255,0.5);
+  font-size: var(--font-size-xs);
 }
 
 .three-d__note {
@@ -1218,7 +1337,7 @@ h3 {
 
 .three-d__error {
   position: absolute;
-  z-index: 2;
+  z-index: 20;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
@@ -1229,14 +1348,11 @@ h3 {
   border: 1px solid var(--color-red);
   border-radius: var(--radius-md);
   background: rgba(5, 8, 12, 0.94);
+  color: var(--color-text);
 }
 
 .three-d__error p {
   margin: 0;
-}
-
-.three-d__exit {
-  flex-shrink: 0;
 }
 
 /* --- HKO Weather tab (PRD §5.2, S35–S40) --- */

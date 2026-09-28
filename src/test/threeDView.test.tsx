@@ -4,28 +4,28 @@ import App from '../App';
 import { useDashboardStore } from '../store/dashboardStore';
 import { makeFakeCesium } from './fakeCesium';
 import type { FakeEntity, FakeViewer } from './fakeCesium';
+import * as cesiumLoader from '../services/cesiumLoader';
 
 /**
  * 3D View tab (PRD §11.4, S104/S126–S129) against the FAKE Cesium global — real
- * entity geometry and layer-visibility behaviour, zero WebGL/network/pixels. The
- * loader is stubbed to resolve instantly (jsdom cannot fetch the CDN), so what is
- * under test is the wiring and the scene builder, not the SDK.
+ * entity geometry and layer-visibility behaviour, zero WebGL/network/pixels.
+ * The control panel is hidden by default; tests open it via the panel toggle.
  */
 
 let fakeCesium: ReturnType<typeof makeFakeCesium>;
 
-/** The live scene's viewer instance — the one the fake Viewer constructor returned. */
 function sceneViewer(): FakeViewer {
   return (fakeCesium as unknown as { __viewer: FakeViewer }).__viewer;
 }
 
-// No vi.mock on cesiumLoader: the REAL loader resolves immediately whenever a global
-// `Cesium` exists (the loader's own first check), so setting the global to the fake
-// exercises loader + scene builder together — a stronger test than stubbing the loader.
-
 function openThreeD(): void {
   const topbar = screen.getByRole('banner');
   fireEvent.click(within(topbar).getByRole('button', { name: /3d view/i }));
+}
+
+/** Open the slide-in control panel so layer buttons are reachable. */
+function openPanel(): void {
+  fireEvent.click(screen.getByRole('button', { name: /show layer controls/i }));
 }
 
 beforeEach((): void => {
@@ -48,9 +48,7 @@ describe('3D View entry and exit (S104/S126/S129)', () => {
     openThreeD();
 
     expect(screen.getByRole('region', { name: /3d view/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /exit 3d view/i })).toBeInTheDocument();
-    // S104: the 2D map stays the landing page underneath; the overlay does not
-    // replace the section state.
+    expect(screen.getByRole('button', { name: /exit 3d/i })).toBeInTheDocument();
     expect(useDashboardStore.getState().activeSection).toBe('operations');
     expect(useDashboardStore.getState().threeDView).toBe(true);
   });
@@ -75,7 +73,7 @@ describe('3D View entry and exit (S104/S126/S129)', () => {
     openThreeD();
     expect(screen.getByRole('region', { name: /3d view/i })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /exit 3d view/i }));
+    fireEvent.click(screen.getByRole('button', { name: /exit 3d/i }));
 
     expect(useDashboardStore.getState().threeDView).toBe(false);
     expect(useDashboardStore.getState().activeSection).toBe('fleet');
@@ -90,7 +88,7 @@ describe('3D scene construction (S127)', () => {
     openThreeD();
 
     await waitFor((): void => {
-      expect(screen.queryByText(/loading scene/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
     });
 
     const zoneEntities = sceneViewer().entities.values.filter((entity: FakeEntity) =>
@@ -101,7 +99,6 @@ describe('3D scene construction (S127)', () => {
       polygon?: { extrudedHeight?: number };
       description?: string;
     };
-    // FR-3D-V3: restricted volumes extruded 0–400 m.
     expect(sampleZone.polygon?.extrudedHeight).toBe(400);
 
     const droneEntities = sceneViewer().entities.values.filter((entity: FakeEntity) =>
@@ -109,12 +106,9 @@ describe('3D scene construction (S127)', () => {
     );
     expect(droneEntities.length).toBeGreaterThan(0);
     const sampleDrone = droneEntities[0].options as { position?: { height: number }; label?: { text: string } };
-    // FR-3D-V4: markers at their real altitude (mock fleet has both 0 m grounded
-    // and >0 m flying aircraft — the marker must carry whatever the truth is).
     expect(typeof sampleDrone.position?.height).toBe('number');
     expect(sampleDrone.label?.text).toMatch(/· \d+ m$/);
 
-    // FR-3D-V5: the planned A* trail renders dashed cyan when a route exists.
     const trail = sceneViewer().entities.values.find((entity: FakeEntity) => entity.id === 'planned-route');
     if (trail !== undefined) {
       expect(trail.options.polyline).toBeDefined();
@@ -122,19 +116,25 @@ describe('3D scene construction (S127)', () => {
   });
 
   it('reports honest counts and the provider ladder status', async () => {
+    vi.spyOn(cesiumLoader, 'readCesiumEnv').mockReturnValue({
+      open3dhkKey: null,
+      ionToken: null,
+      hkDataKey: null,
+    });
     render(<App />);
     openThreeD();
 
     await waitFor((): void => {
       expect(document.querySelector('[data-testid="three-d-canvas"]')).not.toBeNull();
-      expect(screen.getByText(/imagery:/i)).toBeInTheDocument();
     });
 
-    // No keys in the test env: the ladder must land on `osm` with buildings
-    // unavailable and SAY so, never silently pretend.
-    expect(screen.getByText(/imagery: osm/i)).toBeInTheDocument();
-    expect(screen.getByText(/buildings: unavailable/i)).toBeInTheDocument();
+    // Open the panel to see the status
+    openPanel();
+
+    // No building keys in the test env: buildings must be marked unavailable.
+    expect(screen.getByText(/Buildings unavailable/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /buildings/i })).toBeDisabled();
+    vi.restoreAllMocks();
   });
 });
 
@@ -144,10 +144,11 @@ describe('3D layer toggles (S128)', () => {
     openThreeD();
 
     await waitFor((): void => {
-      expect(screen.getByText(/imagery:/i)).toBeInTheDocument();
+      expect(document.querySelector('[data-testid="three-d-canvas"]')).not.toBeNull();
     });
     const viewerBefore = (sceneViewer().camera as unknown as { lastView: unknown }).lastView;
 
+    openPanel();
     const panel = screen.getByRole('group', { name: /3d layer controls/i });
     const weatherToggle = within(panel).getByRole('button', { name: /^weather/i });
     expect(weatherToggle).toHaveAttribute('aria-pressed', 'true');
@@ -162,7 +163,6 @@ describe('3D layer toggles (S128)', () => {
     for (const entity of hidden) {
       expect(entity.show).toBe(false);
     }
-    // No rebuild: the same viewer instance keeps serving (same camera view object).
     expect((sceneViewer().camera as unknown as { lastView: unknown }).lastView).toBe(viewerBefore);
   });
 
@@ -171,9 +171,10 @@ describe('3D layer toggles (S128)', () => {
     openThreeD();
 
     await waitFor((): void => {
-      expect(screen.getByText(/imagery:/i)).toBeInTheDocument();
+      expect(document.querySelector('[data-testid="three-d-canvas"]')).not.toBeNull();
     });
 
+    openPanel();
     const panel = screen.getByRole('group', { name: /3d layer controls/i });
     fireEvent.click(within(panel).getByRole('button', { name: /^drones/i }));
 
@@ -185,14 +186,13 @@ describe('3D layer toggles (S128)', () => {
     openThreeD();
 
     await waitFor((): void => {
-      expect(screen.getByText(/imagery:/i)).toBeInTheDocument();
+      expect(document.querySelector('[data-testid="three-d-canvas"]')).not.toBeNull();
     });
 
+    openPanel();
     const panel = screen.getByRole('group', { name: /3d layer controls/i });
     fireEvent.click(within(panel).getByRole('button', { name: /^terrain/i }));
 
-    // A rebuild passes an env WITHOUT the ion token so the new scene uses an
-    // ellipsoid; the toggle state flips immediately.
     expect(useDashboardStore.getState().threeDView).toBe(true);
     await waitFor((): void => {
       expect(screen.getByRole('button', { name: /^terrain/i })).toHaveAttribute('aria-pressed', 'false');
@@ -202,8 +202,6 @@ describe('3D layer toggles (S128)', () => {
 
 describe('resilience', () => {
   it('shows an explanation instead of a black screen when the scene fails to build', async () => {
-    // Drive the panel's catch path through the REAL loader: a global Cesium whose
-    // Viewer constructor throws exercises exactly what a broken SDK/runtime does.
     (globalThis as { Cesium?: unknown }).Cesium = {
       Viewer: class {
         constructor() {

@@ -153,6 +153,9 @@ export function makeFakeCesium(options?: { buildingsFail?: boolean }): typeof Ce
     OpenStreetMapImageryProvider: class {
       constructor(public options: { url: string }) {}
     },
+    UrlTemplateImageryProvider: class {
+      constructor(public options: { url: string; credit?: string }) {}
+    },
     EllipsoidTerrainProvider: class {},
     PolygonHierarchy: class {
       constructor(public positions: unknown) {}

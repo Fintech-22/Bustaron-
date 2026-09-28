@@ -185,7 +185,7 @@ describe('data backend adapters', () => {
     expect(state.wallets.length).toBe(3);
 
     const mock = resolveBackend('mock');
-    expect(mock.loadInitialState().zones.length).toBe(3);
+    expect(mock.loadInitialState().zones.length).toBe(284); // mock now includes CAD zones too
   });
 
   it('keeps the listZones viewport filter behind the adapter', () => {

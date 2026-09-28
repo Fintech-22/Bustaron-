@@ -51,7 +51,8 @@ describe('BUSTARON milestone 2 credits and approvals UI', () => {
     expect(useDashboardStore.getState().zones.length).toBe(284);
 
     fireEvent.click(within(sourceRow).getByRole('button', { name: /Mock replay/i }));
-    expect(useDashboardStore.getState().zones.length).toBe(3);
+    // Mock backend now also loads CAD zones so restricted zones are always visible
+    expect(useDashboardStore.getState().zones.length).toBe(284);
   });
 
   it('plans an A* route from the mission panel without breaking the mock shell', () => {

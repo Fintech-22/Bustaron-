@@ -1,4 +1,3 @@
-import { initialMockState } from '../data/mockData';
 import type { AirspaceZone, AppState, Drone, Mission, WeatherAlert } from '../types/domain';
 import { loadCadZones, loadCadZonesIntersecting } from './cadGeoJsonService';
 import type { BackendId, DataBackend } from './dataBackend';
@@ -23,25 +22,29 @@ function composeState(
 /**
  * M1 mock replay backend. Purely in-memory, deterministic, offline. Kept as
  * the default so the app runs unchanged with no network and no geodata.
+ * Includes the full CAD RFZ pack so restricted zones are always visible.
  */
 export class MockBackend implements DataBackend {
   readonly id = 'mock' as const;
-  readonly label = 'Mock replay (offline demo)';
+  readonly label = 'Mock replay + CAD RFZ (offline demo)';
   readonly offlineCapable = true;
-  readonly usesIngestedGeodata = false;
+  readonly usesIngestedGeodata = true;
 
   private readonly mockService = new MockDataService();
 
   loadInitialState(): AppState {
-    return this.mockService.loadInitialState();
+    const mockState = this.mockService.loadInitialState();
+    const { zones, ...base } = mockState;
+    void zones;
+    return composeState(base, this.loadZones(), mockState.lastUpdatedIso);
   }
 
   loadZones(): AirspaceZone[] {
-    return initialMockState.zones.map((zone: AirspaceZone): AirspaceZone => ({ ...zone, polygon: [...zone.polygon] }));
+    return loadCadZones();
   }
 
-  listZones(_bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }): AirspaceZone[] {
-    return this.loadZones();
+  listZones(bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }): AirspaceZone[] {
+    return loadCadZonesIntersecting(bounds);
   }
 
   loadFleet(): Drone[] {
@@ -57,7 +60,10 @@ export class MockBackend implements DataBackend {
   }
 
   simulateTick(state: AppState): AppState {
-    return this.mockService.simulateTick(state);
+    const ticked = this.mockService.simulateTick(state);
+    const { zones, ...base } = ticked;
+    void zones;
+    return composeState(base, this.loadZones(), ticked.lastUpdatedIso);
   }
 }
 

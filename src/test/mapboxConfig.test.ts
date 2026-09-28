@@ -43,9 +43,9 @@ describe('mapboxConfig', () => {
     expect(config.hasMapbox()).toBe(false);
   });
 
-  it('points at the dark mapbox style', async () => {
+  it('points at the light streets mapbox style', async () => {
     const config = await loadConfig();
 
-    expect(config.MAPBOX_STYLE).toBe('mapbox://styles/mapbox/dark-v11');
+    expect(config.MAPBOX_STYLE).toBe('mapbox://styles/mapbox/streets-v12');
   });
 });

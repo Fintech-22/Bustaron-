@@ -14,7 +14,7 @@
 export const MAPBOX_TOKEN: string | null =
   (import.meta.env.VITE_MAPBOX_TOKEN as string | undefined)?.trim() || null;
 
-export const MAPBOX_STYLE = 'mapbox://styles/mapbox/dark-v11';
+export const MAPBOX_STYLE = 'mapbox://styles/mapbox/streets-v12';
 
 export function hasMapbox(): boolean {
   return MAPBOX_TOKEN !== null;

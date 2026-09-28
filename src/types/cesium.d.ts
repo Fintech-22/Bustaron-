@@ -69,6 +69,7 @@ interface CesiumStatic {
   Cartesian3: CesiumCartesian3Static;
   Color: CesiumColorStatic;
   OpenStreetMapImageryProvider: new (options: { url: string }) => unknown;
+  UrlTemplateImageryProvider: new (options: { url: string; credit?: string }) => unknown;
   EllipsoidTerrainProvider: new () => unknown;
   PolygonHierarchy: new (positions: unknown) => unknown;
   PolylineDashMaterialProperty: new (options: { color: CesiumColor; dashLength?: number }) => unknown;

@@ -6,19 +6,12 @@ import { useDashboardStore } from '../../store/dashboardStore';
 import type { Drone, LayerId } from '../../types/domain';
 
 /**
- * 3D View tab (PRD §11.4, S126–S129).
+ * 3D View tab — full-screen CesiumJS scene with a collapsible control panel.
  *
- * Full-screen CesiumJS scene rendered as an OVERLAY over whichever 2D section is
- * active (S127) — the 2D dashboard stays mounted underneath, so the single Exit
- * button (S129) hands back exactly the dashboard that was left, for both roles.
- *
- * Layer toggles cover S128's six plus drones/routes; the ones the 2D map also has
- * write through to the SAME store flags, so the two maps never disagree. `terrain`
- * is a construction-time option in Cesium (the provider is handed to the Viewer),
- * so flipping it rebuilds the scene; every other toggle paints the live scene.
- *
- * Loading is lazy: the ~3 MB SDK is fetched only when this overlay mounts, and a
- * load or build failure renders an explanation instead of a silent black screen.
+ * The canvas fills the entire viewport. The layer toggles and status info are
+ * hidden by default; a small floating button reveals them as a slide-in panel.
+ * The top bar is minimal — just a title and an exit button, both overlaying
+ * the canvas without reducing the visible map area.
  */
 
 interface ThreeDLayerToggle {
@@ -28,14 +21,14 @@ interface ThreeDLayerToggle {
 }
 
 const TOGGLES: ThreeDLayerToggle[] = [
-  { id: 'buildings', label: 'Buildings', description: 'Open3Dhk / Cesium OSM 3D city model' },
-  { id: 'terrain', label: 'Terrain', description: 'World Terrain (rebuilds the scene)' },
-  { id: 'restrictedZones', label: 'RFZs', description: 'Extruded airspace volumes, 0–400 m' },
-  { id: 'trails', label: 'Trails', description: 'Planned A* route, dashed' },
-  { id: 'drones', label: 'Drones', description: 'Markers at their real altitude' },
+  { id: 'buildings', label: 'Buildings', description: 'HK 3D city model' },
+  { id: 'terrain', label: 'Terrain', description: 'World Terrain (rebuilds scene)' },
+  { id: 'restrictedZones', label: 'RFZs', description: 'Restricted flight zones' },
+  { id: 'trails', label: 'Trails', description: 'Planned A* route' },
+  { id: 'drones', label: 'Drones', description: 'Live drone markers' },
   { id: 'routes', label: 'Mission routes', description: 'Corridor polylines' },
-  { id: 'weather', label: 'Weather', description: 'Rain cells + cell wind speed' },
-  { id: 'grid', label: 'Traffic heatmap', description: 'Skycell occupancy volumes' },
+  { id: 'weather', label: 'Weather', description: 'Rain cells + wind' },
+  { id: 'grid', label: 'Skycells', description: 'Traffic heatmap volumes' },
 ];
 
 const SHARED_LAYER_IDS: LayerId[] = ['drones', 'routes', 'restrictedZones', 'weather', 'grid'];
@@ -56,6 +49,7 @@ export function ThreeDViewPanel(): JSX.Element {
   const [status, setStatus] = useState<SceneStatus | null>(null);
   const [counts, setCounts] = useState<SceneCounts | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [local3d, setLocal3d] = useState<Record<'buildings' | 'terrain' | 'trails', boolean>>({
     buildings: true,
     terrain: true,
@@ -75,8 +69,6 @@ export function ThreeDViewPanel(): JSX.Element {
   const closedCells = useDashboardStore((state) => state.closedCells);
 
   const env = useMemo(() => readCesiumEnv(), []);
-  // PRD §11.3.3 fleet scoping, identical to the 2D map: operators see their own
-  // drones, admin sees everyone.
   const drones = useMemo(
     () =>
       activeRole === 'admin' || currentOperatorId === null
@@ -95,9 +87,6 @@ export function ThreeDViewPanel(): JSX.Element {
     [storeLayers, local3d],
   );
 
-  // Build the scene once per terrain choice + data identity. Layer flags are NOT
-  // construction inputs — they are painted on through setLayer below, so a toggle
-  // never throws away the camera.
   const terrainOn = local3d.terrain;
   useEffect(() => {
     let cancelled = false;
@@ -108,8 +97,6 @@ export function ThreeDViewPanel(): JSX.Element {
     setError(null);
     const build = async (): Promise<void> => {
       try {
-        // MUST precede buildScene: the scene builder reads the Cesium GLOBAL, which
-        // only exists once the SDK has loaded.
         await loadCesium();
         const scene = await buildScene({
           container,
@@ -149,13 +136,9 @@ export function ThreeDViewPanel(): JSX.Element {
       controllerRef.current = null;
       delete (window as unknown as { __bustaron3d?: ThreeDHandle }).__bustaron3d;
     };
-    // `layers` and `env` are read deliberately: env never changes for the page's
-    // lifetime, and layer flips are painted by the effect below instead of forcing a
-    // rebuild. Everything else on this line is a genuine scene input.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terrainOn, zones, drones, missions, weatherAlerts, skycells, plannedRoute]);
 
-  // Paint layer changes onto the live scene (no rebuild, camera preserved).
   useEffect(() => {
     const controller = controllerRef.current;
     if (controller === null) {
@@ -181,31 +164,36 @@ export function ThreeDViewPanel(): JSX.Element {
   const buildingsUnavailable = status !== null && status.buildings === 'unavailable';
 
   return (
-    <section className="three-d" aria-label="3D View">
-      <div className="three-d__bar">
-        <div>
+    <section className="three-d three-d--fullscreen" aria-label="3D View">
+      {/* Full-screen canvas */}
+      <div className="three-d__canvas" ref={containerRef} data-testid="three-d-canvas" />
+
+      {/* Floating top bar — minimal, overlays the canvas */}
+      <div className="three-d__topbar">
+        <div className="three-d__topbar-info">
           <p className="three-d__eyebrow">Situational awareness</p>
           <h2 className="three-d__title">
-            {status === null ? '3D View — loading scene…' : sceneTitle(status)}
+            {status === null ? 'Loading…' : sceneTitle(status)}
           </h2>
         </div>
-        {/* PRD S129: the single exit back to the 2D dashboard. */}
-        <button type="button" className="control-button three-d__exit" onClick={closeThreeDView}>
-          Exit 3D View
+        <button type="button" className="three-d__exit" onClick={closeThreeDView}>
+          Exit 3D
         </button>
       </div>
 
-      <div className="three-d__canvas" ref={containerRef} data-testid="three-d-canvas" />
+      {/* Floating toggle button for the control panel */}
+      <button
+        type="button"
+        className={`three-d__panel-toggle ${panelOpen ? 'three-d__panel-toggle--open' : ''}`}
+        onClick={() => setPanelOpen((v) => !v)}
+        aria-expanded={panelOpen}
+        aria-label={panelOpen ? 'Hide layer controls' : 'Show layer controls'}
+      >
+        {panelOpen ? '×' : '☰'}
+      </button>
 
-      {error !== null && (
-        <div className="three-d__error" role="alert">
-          <strong>3D scene unavailable.</strong>
-          <p>{error}</p>
-          <p className="helper-text">The 2D map is unaffected — exit 3D View to continue operating.</p>
-        </div>
-      )}
-
-      <div className="three-d__panel" role="group" aria-label="3D layer controls">
+      {/* Slide-in control panel */}
+      <div className={`three-d__panel ${panelOpen ? 'three-d__panel--open' : ''}`} role="group" aria-label="3D layer controls">
         <p className="nav-group__label">Layers</p>
         {TOGGLES.map((toggle) => (
           <button
@@ -215,11 +203,7 @@ export function ThreeDViewPanel(): JSX.Element {
             aria-pressed={layers[toggle.id]}
             disabled={toggle.id === 'buildings' && buildingsUnavailable}
             onClick={() => onToggle(toggle.id)}
-            title={
-              toggle.id === 'buildings' && buildingsUnavailable
-                ? 'No city-model key configured (VITE_OPEN3DHK_KEY / VITE_CESIUM_ION_TOKEN)'
-                : toggle.description
-            }
+            title={toggle.description}
           >
             <strong>{toggle.label}</strong>
             <span className="helper-text">{toggle.description}</span>
@@ -228,14 +212,8 @@ export function ThreeDViewPanel(): JSX.Element {
         {status !== null && (
           <div className="three-d__status">
             <p className="helper-text">
-              imagery: {status.provider} · buildings: {status.buildings} · terrain: {status.terrain}
+              {counts !== null && `${counts.rfz} RFZs · ${counts.drones} drones · ${counts.traffic} skycells`}
             </p>
-            {counts !== null && (
-              <p className="helper-text">
-                {counts.rfz} volumes · {counts.drones} drones · {counts.weather} weather items ·{' '}
-                {counts.traffic} skycells
-              </p>
-            )}
             {status.notes.map((note: string) => (
               <p className="helper-text three-d__note" key={note}>
                 {note}
@@ -244,16 +222,21 @@ export function ThreeDViewPanel(): JSX.Element {
           </div>
         )}
       </div>
+
+      {error !== null && (
+        <div className="three-d__error" role="alert">
+          <strong>3D scene unavailable.</strong>
+          <p>{error}</p>
+          <p className="helper-text">The 2D map is unaffected — exit 3D View to continue.</p>
+        </div>
+      )}
     </section>
   );
 }
 
 function sceneTitle(status: SceneStatus): string {
-  if (status.provider === 'open3dhk') {
-    return '3D View — Open3Dhk Hong Kong tiles';
-  }
-  if (status.provider === 'ion') {
-    return '3D View — Cesium OSM Buildings + World Terrain';
-  }
-  return '3D View — OpenStreetMap imagery (city-model keys not configured)';
+  if (status.buildings === 'hkData') return '3D View — HK 3D Buildings';
+  if (status.buildings === 'open3dhk') return '3D View — Open3Dhk';
+  if (status.buildings === 'ion') return '3D View — OSM Buildings';
+  return '3D View';
 }

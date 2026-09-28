@@ -20,7 +20,7 @@
 
 import type { AirspaceZone, Drone, GeoPoint, LayerId, Mission, WeatherAlert } from '../../types/domain';
 import type { Skycell } from '../../services/skycells';
-import { open3dhkTilesetUrl, type CesiumEnv } from '../../services/cesiumLoader';
+import { open3dhkTilesetUrl, hkDataBuildingTilesetUrl, HK_LANDSD_IMAGERY_URL, type CesiumEnv } from '../../services/cesiumLoader';
 
 /** PRD FR-3D-V3 / §5.3: RFZ volumes are extruded 0–400 m. */
 export const RFZ_VOLUME_HEIGHT_M = 400;
@@ -48,8 +48,8 @@ export interface SceneCounts {
 
 export interface SceneStatus {
   /** Which imagery/tiles provider actually loaded (the PRD ladder). */
-  provider: 'open3dhk' | 'ion' | 'osm';
-  buildings: 'open3dhk' | 'ion' | 'unavailable';
+  provider: 'hkLandsd' | 'open3dhk' | 'ion' | 'osm';
+  buildings: 'hkData' | 'open3dhk' | 'ion' | 'unavailable';
   terrain: 'ion' | 'ellipsoid';
   notes: string[];
 }
@@ -99,7 +99,7 @@ function zoneColor(kind: AirspaceZone['kind']): string {
 
 export async function buildScene(inputs: SceneInputs): Promise<SceneController> {
   const { container, zones, drones, missions, weatherAlerts, skycells, plannedRoute, env } = inputs;
-  const status: SceneStatus = { provider: 'osm', buildings: 'unavailable', terrain: 'ellipsoid', notes: [] };
+  const status: SceneStatus = { provider: 'hkLandsd', buildings: 'unavailable', terrain: 'ellipsoid', notes: [] };
 
   let terrainProvider: unknown;
   if (env.ionToken !== null && Cesium.Ion) {
@@ -116,20 +116,32 @@ export async function buildScene(inputs: SceneInputs): Promise<SceneController> 
     status.notes.push('No Cesium Ion token: terrain is an ellipsoid (set VITE_CESIUM_ION_TOKEN for World Terrain).');
   }
 
-  // PRD FR-D2's ladder, in order: Open3Dhk → Ion OSM Buildings → unavailable.
+  // Building provider ladder: HK Data Portal → Open3Dhk → Ion OSM → unavailable.
   let buildingsPrimitive: unknown = null;
-  if (env.open3dhkKey !== null) {
+
+  // 1. HK Data Portal 3D buildings (data.map.gov.hk) — finest quality, 218k+ components
+  if (env.hkDataKey !== null) {
+    try {
+      buildingsPrimitive = await Cesium.Cesium3DTileset.fromUrl(hkDataBuildingTilesetUrl(env.hkDataKey));
+      status.provider = 'hkLandsd';
+      status.buildings = 'hkData';
+    } catch {
+      status.notes.push('HK Data building tileset did not load (check VITE_HK_DATA_KEY) — falling back.');
+    }
+  }
+
+  // 2. Open3Dhk visualisation map (3d.map.gov.hk)
+  if (buildingsPrimitive === null && env.open3dhkKey !== null) {
     try {
       buildingsPrimitive = await Cesium.Cesium3DTileset.fromUrl(open3dhkTilesetUrl(env.open3dhkKey));
-      status.provider = 'open3dhk';
+      if (status.provider === 'osm') status.provider = 'open3dhk';
       status.buildings = 'open3dhk';
     } catch {
-      // The live tile endpoint redirects (302) or refuses (403) for a missing/expired key,
-      // so a failure here is expected and must degrade, not throw (verified against the
-      // real service: no key ⇒ 302 to an HTML page, which Cesium cannot parse).
       status.notes.push('Open3Dhk tileset did not load (check VITE_OPEN3DHK_KEY) — falling back.');
     }
   }
+
+  // 3. Cesium Ion OSM Buildings
   if (buildingsPrimitive === null && env.ionToken !== null && Cesium.createOsmBuildingsAsync) {
     try {
       buildingsPrimitive = await Cesium.createOsmBuildingsAsync();
@@ -143,7 +155,7 @@ export async function buildScene(inputs: SceneInputs): Promise<SceneController> 
   }
   if (buildingsPrimitive === null && status.buildings === 'unavailable') {
     status.notes.push(
-      'Buildings unavailable: set VITE_OPEN3DHK_KEY (LandsD) or VITE_CESIUM_ION_TOKEN to load a 3D city model.',
+      'Buildings unavailable: set VITE_HK_DATA_KEY (data.map.gov.hk) or VITE_OPEN3DHK_KEY (LandsD) or VITE_CESIUM_ION_TOKEN to load a 3D city model.',
     );
   }
 
@@ -164,7 +176,13 @@ export async function buildScene(inputs: SceneInputs): Promise<SceneController> 
     selectionIndicator: false,
     requestRenderMode: true,
   });
-  viewer.imageryLayers.addImageryProvider(new Cesium.OpenStreetMapImageryProvider({ url: 'https://tile.openstreetmap.org/' }));
+  // HK LandsD government basemap imagery — no key required, covers all of HK.
+  viewer.imageryLayers.addImageryProvider(
+    new Cesium.UrlTemplateImageryProvider({
+      url: HK_LANDSD_IMAGERY_URL,
+      credit: '© Map from Lands Department, HKSAR Government',
+    }),
+  );
   if (buildingsPrimitive !== null) {
     viewer.scene.primitives.add(buildingsPrimitive);
   }
