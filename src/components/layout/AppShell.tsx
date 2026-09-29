@@ -7,6 +7,7 @@ import { WeatherPanel } from '../panels/WeatherPanel';
 import { AdminPanel } from '../panels/AdminPanel';
 import { AlertsPanel } from '../panels/AlertsPanel';
 import { AnalyticsPanel } from '../panels/AnalyticsPanel';
+import { AnalyticsStrip } from '../charts/AnalyticsStrip';
 import { ApprovalsQueuePanel } from '../panels/ApprovalsQueuePanel';
 import { CreditWalletPanel } from '../panels/CreditWalletPanel';
 import { EsgScorecardPanel } from '../panels/EsgScorecardPanel';
@@ -16,6 +17,7 @@ import { AirspaceManagementPanel } from '../panels/AirspaceManagementPanel';
 import { FlightPlansPanel } from '../panels/FlightPlansPanel';
 import { MissionPanel } from '../panels/MissionPanel';
 import { StatusPanel } from '../panels/StatusPanel';
+import { LoginPage } from '../auth/LoginPage';
 import { useDashboardStore } from '../../store/dashboardStore';
 import type { Drone } from '../../types/domain';
 import { SidebarNav } from './SidebarNav';
@@ -42,6 +44,7 @@ export function AppShell(): JSX.Element {
 
   const activeRole = useDashboardStore((state) => state.activeRole);
   const activeSection = useDashboardStore((state) => state.activeSection);
+  const isAuthenticated = useDashboardStore((state) => state.isAuthenticated);
   const drones = useDashboardStore((state) => state.drones);
   const wallets = useDashboardStore((state) => state.wallets);
   const approvalRequests = useDashboardStore((state) => state.approvalRequests);
@@ -88,6 +91,11 @@ export function AppShell(): JSX.Element {
   ];
   const visibleMetrics = activeRole === 'admin' ? adminMetrics : operatorMetrics;
 
+  // PRD §7: unauthenticated users see the login page, not the dashboard.
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
   return (
     <div className="app-shell" data-theme={theme}>
       <SidebarNav activeRole={activeRole} activeSection={activeSection} onNavigate={navigate} />
@@ -117,7 +125,12 @@ export function AppShell(): JSX.Element {
               ))}
             </div>
             <div key={activeSection} className="section-transition">
-              {activeSection === 'operations' && <MapHost />}
+              {activeSection === 'operations' && (
+                <>
+                  <MapHost />
+                  <AnalyticsStrip />
+                </>
+              )}
               {activeSection === 'missions' && <FlightPlansPanel />}
               {activeSection === 'wallet' && <CreditWalletPanel />}
               {activeSection === 'esg' && <EsgScorecardPanel />}

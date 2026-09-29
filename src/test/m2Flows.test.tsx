@@ -2,10 +2,12 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import App from '../App';
 import { useDashboardStore } from '../store/dashboardStore';
+import { authAdmin } from './authHelper';
 
 describe('BUSTARON milestone 2 credits and approvals UI', () => {
   beforeEach(() => {
     useDashboardStore.getState().initialize();
+    authAdmin();
   });
 
   it('opens the credit wallet and escrows credits when a bid is placed', () => {

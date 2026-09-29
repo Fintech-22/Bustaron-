@@ -9,6 +9,8 @@ beforeAll(async (): Promise<void> => {
   vi.stubEnv('VITE_MAPBOX_TOKEN', '');
   vi.resetModules();
   App = (await import('../App')).default;
+  const { authAdminAsync } = await import('./authHelper');
+  await authAdminAsync();
 });
 
 afterAll((): void => {

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 import { useDashboardStore } from '../store/dashboardStore';
+import { authAdmin } from './authHelper';
 import { makeFakeCesium } from './fakeCesium';
 import type { FakeEntity, FakeViewer } from './fakeCesium';
 import * as cesiumLoader from '../services/cesiumLoader';
@@ -19,6 +20,11 @@ function sceneViewer(): FakeViewer {
 }
 
 function openThreeD(): void {
+  // RBAC (PRD §7): 3D View overlay is admin-only. Set admin role directly
+  // so the 3D button is visible without changing the active section.
+  act((): void => {
+    useDashboardStore.setState({ activeRole: 'admin' });
+  });
   const topbar = screen.getByRole('banner');
   fireEvent.click(within(topbar).getByRole('button', { name: /3d view/i }));
 }
@@ -33,6 +39,7 @@ beforeEach((): void => {
   (globalThis as { Cesium?: unknown }).Cesium = fakeCesium;
   act((): void => {
     useDashboardStore.getState().initialize();
+    authAdmin();
   });
 });
 
@@ -42,7 +49,7 @@ afterEach((): void => {
 });
 
 describe('3D View entry and exit (S104/S126/S129)', () => {
-  it('opens full-screen over the 2D dashboard from the operator console', () => {
+  it('opens full-screen over the 2D dashboard (admin-only per RBAC)', () => {
     render(<App />);
 
     openThreeD();
@@ -74,6 +81,13 @@ describe('3D View entry and exit (S104/S126/S129)', () => {
     expect(screen.getByRole('region', { name: /3d view/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /exit 3d/i }));
+
+    // The exit button triggers a fade-out animation; simulate the animation
+    // end to complete the close (Plan 008 — 3D overlay fade enter/exit).
+    expect(useDashboardStore.getState().threeDClosing).toBe(true);
+    act((): void => {
+      useDashboardStore.getState().finishCloseThreeDView();
+    });
 
     expect(useDashboardStore.getState().threeDView).toBe(false);
     expect(useDashboardStore.getState().activeSection).toBe('fleet');

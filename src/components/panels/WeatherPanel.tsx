@@ -80,14 +80,18 @@ export function WeatherPanel(): JSX.Element {
       {error !== null && (
         <div className="weather-panel__offline" role="alert">
           <strong>M3 server unreachable — weather evidence unverifiable.</strong>
-          <p>{error}</p>
+          <p>
+            The backend at <code>{M3_API_BASE}</code> is not responding. Start the M3 server:
+            <br />
+            <code>python -m uvicorn server.main:app --port 8000</code>
+          </p>
           <ul className="weather-panel__checks">
             <li data-state="unverifiable">S35 poll+cache: server-side, cannot observe offline</li>
             <li data-state="unverifiable">S37 agent wind evidence: requires live snapshot</li>
             <li data-state="unverifiable">S39 STALE flag: requires a last-good cache</li>
             <li data-state="unverifiable">S40 genesis anchor: visible once connected</li>
           </ul>
-          <p className="helper-text">Retrying every 5 s · server: {M3_API_BASE}</p>
+          <p className="helper-text">Retrying every 5 s · last error: {error}</p>
         </div>
       )}
 
@@ -148,6 +152,18 @@ export function WeatherPanel(): JSX.Element {
               <dd>×{weather.pathCostFactor.toFixed(2)}</dd>
             </div>
             <div>
+              <dt>UV index</dt>
+              <dd>
+                {weather.uvIndex === null
+                  ? '—'
+                  : `${weather.uvIndex}${weather.uvDesc === null ? '' : ` (${weather.uvDesc})`}`}
+              </dd>
+            </div>
+            <div>
+              <dt>Rainfall (territory max)</dt>
+              <dd>{weather.rainfallMm === null ? '—' : `${weather.rainfallMm} mm`}</dd>
+            </div>
+            <div>
               <dt>S38 dispatch gate</dt>
               <dd data-gate={weather.dispatchBlocked ? 'blocked' : 'open'}>
                 {weather.dispatchBlocked
@@ -166,6 +182,12 @@ export function WeatherPanel(): JSX.Element {
                 </li>
               ))}
             </ul>
+          )}
+
+          {weather.warningMessage !== null && (
+            <p className="weather-panel__warning-msg" role="status">
+              {weather.warningMessage}
+            </p>
           )}
 
           <div className="weather-panel__anchor">

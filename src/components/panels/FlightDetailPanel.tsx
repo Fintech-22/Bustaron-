@@ -421,32 +421,36 @@ export function FlightDetailPanel(): JSX.Element {
                   </span>
                 </button>
                 {isOpen && expanded && expanded.id === mission.id && (
-                  <div id={`flight-${mission.id}`} className="flight-detail__body">
-                    <section className="flight-detail__map" aria-label="Declared flight zone map">
-                      <h3 className="flight-detail__sub-title">Declared flight zone map</h3>
-                      <RoutePreview
-                        route={mission.route}
-                        label={`Route preview for ${mission.name}`}
-                        summary={`${mission.route.length} waypoints · ${formatDistance(routeLengthM(mission.route))} planned track.`}
-                      />
-                    </section>
-                    <section className="flight-detail__cards" aria-label="Flight details">
-                      <h3 className="flight-detail__sub-title">Flight details</h3>
-                      <div className="flight-detail__card-grid">
-                        <article className="flight-detail__card flight-detail__card--auth">
-                          <header>
-                            <span className="helper-text">Authorization status</span>
-                          </header>
-                          <strong className="flight-detail__card-value">
-                            <span className="badge" style={{ '--badge-color': approvalTone, '--badge-border': approvalTone } as CSSProperties}>
-                              {expandedApproval === 'none' ? 'Pending' : expandedApproval}
-                            </span>
-                          </strong>
-                          <DecisionActions />
-                        </article>
-                        <article className="flight-detail__card flight-detail__card--status">
-                          <header>
-                            <span className="helper-text">Flight status</span>
+                  <div
+                    id={`flight-${mission.id}`}
+                    className={`flight-detail__row-wrapper flight-detail__row-wrapper--open`}
+                  >
+                    <div className="flight-detail__body">
+                      <section className="flight-detail__map" aria-label="Declared flight zone map">
+                        <h3 className="flight-detail__sub-title">Declared flight zone map</h3>
+                        <RoutePreview
+                          route={mission.route}
+                          label={`Route preview for ${mission.name}`}
+                          summary={`${mission.route.length} waypoints · ${formatDistance(routeLengthM(mission.route))} planned track.`}
+                        />
+                      </section>
+                      <section className="flight-detail__cards" aria-label="Flight details">
+                        <h3 className="flight-detail__sub-title">Flight details</h3>
+                        <div className="flight-detail__card-grid">
+                          <article className="flight-detail__card flight-detail__card--auth">
+                            <header>
+                              <span className="helper-text">Authorization status</span>
+                            </header>
+                            <strong className="flight-detail__card-value">
+                              <span className="badge" style={{ '--badge-color': approvalTone, '--badge-border': approvalTone } as CSSProperties}>
+                                {expandedApproval === 'none' ? 'Pending' : expandedApproval}
+                              </span>
+                            </strong>
+                            <DecisionActions />
+                          </article>
+                          <article className="flight-detail__card flight-detail__card--status">
+                            <header>
+                              <span className="helper-text">Flight status</span>
                           </header>
                           <strong className="flight-detail__card-value">
                             <span aria-hidden="true" className="flight-detail__status-dot" />
@@ -478,6 +482,7 @@ export function FlightDetailPanel(): JSX.Element {
                       <RulesFeed rules={expandedRules} severity={severityForExpanded} />
                       <PilotContact mission={expanded} drone={expandedDrone} />
                     </section>
+                    </div>
                   </div>
                 )}
               </li>

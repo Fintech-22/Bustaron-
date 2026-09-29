@@ -1,0 +1,33 @@
+# Render Blueprint — BUSTARON M3 backend (free web service tier)
+# Docs: https://render.com/docs/blueprint-spec
+# Deploy: push this file to your repo, then "New +" > "Blueprint" in Render.
+services:
+  - type: web
+    name: bustaron-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server.main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      # Data directory — Render filesystem persists across sleeps, NOT deploys.
+      # Acceptable for demos; for production persistence use Supabase Postgres.
+      - key: BUSTARON_DATA_DIR
+        value: /opt/render/project/src/server/data
+      # Production mode — requires explicit authority seeds (no dev-key fallback).
+      - key: BUSTARON_ENV
+        value: production
+      # CORS: set to your Vercel frontend URL after deploying the frontend.
+      # e.g. https://bustaron.vercel.app
+      - key: BUSTARON_CORS_ORIGIN
+        sync: false
+      # 3-of-3 PoA authority seeds — generate each with:
+      #   python -c "import os;print(os.urandom(32).hex())"
+      # Store in Render's secret manager; NEVER commit these.
+      - key: BUSTARON_AUTHORITY_NODE_ADMIN_SEED
+        sync: false
+      - key: BUSTARON_AUTHORITY_NODE_AGENT_A_SEED
+        sync: false
+      - key: BUSTARON_AUTHORITY_NODE_AGENT_B_SEED
+        sync: false

@@ -40,6 +40,10 @@ export interface HkoWeather {
   stationCount: number;
   temperatureC: number | null;
   humidityPct: number | null;
+  uvIndex: number | null;
+  uvDesc: string | null;
+  rainfallMm: number | null;
+  warningMessage: string | null;
   typhoonSignal: number;
   typhoonCode: string | null;
   warnings: HkoWarning[];
@@ -54,14 +58,24 @@ export interface HkoWeather {
 }
 
 /**
- * Fetches the snapshot. Throws with the server's own `detail` when it answers with
- * an error body — the same defensive read `m3Backend.ts` uses, because a non-ok body
- * is NOT guaranteed to be a JSON object.
+ * Fetches the snapshot. Throws with a human-readable message when the server is
+ * unreachable — the raw browser "Failed to fetch" TypeError is converted to an
+ * actionable message so the UI can tell the user what to do.
  */
 export async function fetchHkoWeather(baseUrl: string = M3_API_BASE): Promise<HkoWeather> {
-  const response = await fetch(`${baseUrl}/api/weather`, {
-    headers: { 'Content-Type': 'application/json' },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/api/weather`, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    // Chrome/Firefox throw a TypeError("Failed to fetch") when the server is not
+    // running. Convert it to a message the UI can present usefully.
+    if (error instanceof TypeError) {
+      throw new Error(`Cannot connect to ${baseUrl} — the M3 server may not be running`);
+    }
+    throw error;
+  }
   if (!response.ok) {
     const body: unknown = await response.json().catch((): null => null);
     const detail =

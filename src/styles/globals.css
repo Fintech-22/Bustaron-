@@ -2488,3 +2488,508 @@ h3 {
 .control-button--reopen:hover {
   background: rgba(74, 222, 128, 0.25);
 }
+
+/* ── Login page (PRD §7) ───────────────────────────────────────────── */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg);
+  color: var(--color-text);
+  padding: var(--space-3);
+}
+
+.login-card {
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 2rem;
+  width: 100%;
+  max-width: 440px;
+  box-shadow: var(--shadow-panel);
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.brand-mark--large {
+  width: 48px;
+  height: 48px;
+  font-size: 1.5rem;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-cyan, #22d3ee);
+  color: #0b0c10;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.login-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: 0.05em;
+}
+
+.login-subtitle {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary, #9ca3af);
+  margin: 0;
+}
+
+.login-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.login-tab {
+  flex: 1;
+  padding: 0.625rem 0.5rem;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-secondary, #9ca3af);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.login-tab:hover {
+  color: var(--color-text);
+}
+
+.login-tab--active {
+  color: var(--color-text);
+  border-bottom-color: var(--color-cyan, #22d3ee);
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.form-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-secondary, #9ca3af);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.form-input {
+  padding: 0.625rem 0.75rem;
+  background: var(--color-bg-elevated, var(--color-bg));
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text);
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.form-input:focus {
+  border-color: var(--color-cyan, #22d3ee);
+}
+
+.form-input::placeholder {
+  color: var(--color-text-secondary, #6b7280);
+  opacity: 0.7;
+}
+
+.form-error {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  color: #fca5a5;
+  font-size: 0.75rem;
+}
+
+.form-success {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 6px;
+  color: #86efac;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.login-submit {
+  padding: 0.75rem 1rem;
+  background: var(--color-cyan, #22d3ee);
+  color: #0b0c10;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  margin-top: 0.5rem;
+}
+
+.login-submit:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.login-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form-hint {
+  margin: 0;
+  text-align: center;
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary, #6b7280);
+  opacity: 0.6;
+}
+
+@media (max-width: 480px) {
+  .login-card {
+    padding: 1.25rem;
+  }
+
+  .login-title {
+    font-size: 1.1rem;
+  }
+}
+
+/* ============================================================
+   STAGE 4 — Analytics Strip & Chart Components
+   ============================================================ */
+
+/* Analytics strip — renders below the map on the Operations page */
+.analytics-strip {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.analytics-strip__charts {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.analytics-strip__chart-block,
+.analytics-strip__gauge-block,
+.analytics-strip__hko-block {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.analytics-strip__chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.analytics-strip__title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.analytics-strip__badge {
+  font-size: 0.6875rem;
+  color: var(--color-cyan);
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-elevated);
+}
+
+/* Sky Occupancy Chart */
+.sky-occupancy-chart {
+  width: 100%;
+  height: auto;
+  max-height: 200px;
+}
+
+.sky-chart__grid-line {
+  stroke: var(--color-border);
+  stroke-width: 0.5;
+  stroke-dasharray: 2 3;
+}
+
+.sky-chart__area {
+  fill: var(--color-cyan);
+  fill-opacity: 0.12;
+}
+
+.sky-chart__line {
+  stroke: var(--color-cyan);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.sky-chart__peak-dot {
+  fill: var(--color-amber);
+  stroke: var(--color-bg);
+  stroke-width: 1;
+}
+
+.sky-chart__peak-label {
+  font-size: 9px;
+  fill: var(--color-amber);
+  font-weight: 600;
+}
+
+.sky-chart__axis-label {
+  font-size: 8px;
+  fill: var(--color-text);
+  opacity: 0.6;
+}
+
+.sky-chart__axis-title {
+  font-size: 8px;
+  fill: var(--color-text);
+  opacity: 0.5;
+  font-weight: 500;
+}
+
+/* Risk Gauge */
+.risk-gauge {
+  width: 100%;
+  height: auto;
+  max-height: 160px;
+}
+
+.risk-gauge__track {
+  stroke: var(--color-border);
+}
+
+.risk-gauge__fill {
+  transition: stroke-dashoffset 0.4s ease;
+}
+
+.risk-gauge__tick {
+  stroke: var(--color-text);
+  stroke-width: 1;
+  opacity: 0.4;
+}
+
+.risk-gauge__tick-label {
+  font-size: 8px;
+  fill: var(--color-text);
+  opacity: 0.5;
+}
+
+.risk-gauge__needle {
+  stroke: var(--color-text);
+  transition: transform 0.4s ease;
+  transform-origin: 100px 95px;
+}
+
+.risk-gauge__hub {
+  fill: var(--color-text);
+}
+
+.risk-gauge__score-value {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.risk-gauge__score-label {
+  font-size: 9px;
+  fill: var(--color-text);
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.risk-gauge__factors {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 0.5rem;
+  font-size: 0.625rem;
+  color: var(--color-text);
+  opacity: 0.6;
+}
+
+/* HKO Weather Strip */
+.hko-strip__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.hko-strip__grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.hko-strip__grid dt {
+  font-size: 0.625rem;
+  color: var(--color-text);
+  opacity: 0.5;
+  text-transform: uppercase;
+}
+
+.hko-strip__grid dd {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.hko-strip__blocked {
+  color: var(--color-red);
+  font-weight: 700;
+}
+
+.hko-strip__open {
+  color: var(--color-radar);
+  font-weight: 700;
+}
+
+.hko-strip__warning {
+  margin: 0.5rem 0 0;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.6875rem;
+  color: var(--color-amber);
+  background: rgba(217, 119, 6, 0.08);
+  border: 1px solid rgba(217, 119, 6, 0.25);
+  border-radius: 4px;
+}
+
+/* KPI Groups */
+.analytics-strip__kpis {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+}
+
+.kpi-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.kpi-group__label {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--color-cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.kpi-group__cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+
+.kpi-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.4rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kpi-card[data-tone='good'] {
+  border-left: 3px solid var(--color-radar);
+}
+
+.kpi-card[data-tone='warning'] {
+  border-left: 3px solid var(--color-amber);
+}
+
+.kpi-card[data-tone='critical'] {
+  border-left: 3px solid var(--color-red);
+}
+
+.kpi-card[data-tone='neutral'] {
+  border-left: 3px solid var(--color-cyan);
+}
+
+.kpi-card__label {
+  margin: 0;
+  font-size: 0.625rem;
+  color: var(--color-text);
+  opacity: 0.6;
+  text-transform: uppercase;
+}
+
+.kpi-card__value {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+/* Analytics chart container (in AnalyticsPanel) */
+.analytics-chart-container {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+
+.analytics-chart-container .sky-occupancy-chart {
+  max-height: 240px;
+}
+
+/* Responsive — stack charts vertically on narrow screens */
+@media (max-width: 1024px) {
+  .analytics-strip__charts {
+    grid-template-columns: 1fr;
+  }
+
+  .analytics-strip__kpis {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .kpi-group__cards {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .hko-strip__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}

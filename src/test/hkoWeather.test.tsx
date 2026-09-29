@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 import { useDashboardStore } from '../store/dashboardStore';
+import { authAdmin } from './authHelper';
 
 /**
  * HKO Weather tab (PRD §5.2, S35–S40). The SERVER owns the poller/cache/gate —
@@ -25,6 +26,10 @@ function serverSnapshot(overrides: Record<string, unknown> = {}): Record<string,
     stationCount: 25,
     temperatureC: 29.5,
     humidityPct: 78,
+    uvIndex: 7,
+    uvDesc: 'high',
+    rainfallMm: 0,
+    warningMessage: null,
     typhoonSignal: 0,
     typhoonCode: null,
     warnings: [],
@@ -46,6 +51,7 @@ async function openWeatherTab(): Promise<void> {
 beforeEach((): void => {
   act((): void => {
     useDashboardStore.getState().initialize();
+    authAdmin();
   });
   render(<App />);
 });

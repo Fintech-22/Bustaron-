@@ -11,6 +11,7 @@ import type {
   NavSection,
   UserRole,
 } from '../types/domain';
+import type { AuthUser } from '../auth/authService';
 import { listBackends, resolveBackend } from '../services/dataBackends';
 import type { DataBackend } from '../services/dataBackend';
 import { awardAuction, decideApproval, placeBid } from '../services/creditsService';
@@ -30,6 +31,9 @@ import type { ClosedCellSet } from '../services/skycells';
 export interface DashboardStore extends AppState {
   activeRole: UserRole;
   activeSection: NavSection;
+  /** PRD §7: authenticated session. null when logged out. */
+  isAuthenticated: boolean;
+  authUser: AuthUser | null;
   selectedDroneId: string;
   activeLayers: Record<LayerId, boolean>;
   emergencyMode: boolean;
@@ -56,6 +60,7 @@ export interface DashboardStore extends AppState {
    * roles — without a second navigation state to keep in sync.
    */
   threeDView: boolean;
+  threeDClosing: boolean;
   initialize: () => void;
   setRole: (role: UserRole) => void;
   navigate: (section: NavSection) => void;
@@ -63,6 +68,8 @@ export interface DashboardStore extends AppState {
   openThreeDView: () => void;
   /** PRD S129: the single exit back to the 2D dashboard. */
   closeThreeDView: () => void;
+  /** Completes the 3D close after the fade-out animation. */
+  finishCloseThreeDView: () => void;
   selectDrone: (id: string) => void;
   toggleLayer: (layer: LayerId) => void;
   /** PRD §11.3.3: impersonate an operator in the operator console. */
@@ -97,6 +104,10 @@ export interface DashboardStore extends AppState {
   closedCells: ClosedCellSet;
   /** Toggle the closure state of a skycell by id. */
   toggleCellClosure: (cellId: string) => void;
+  /** PRD §7: sets the authenticated session after successful login. */
+  authenticate: (user: AuthUser) => void;
+  /** PRD §7: clears the session and returns to the login page. */
+  logout: () => void;
 }
 
 const initialBackend: DataBackend = resolveBackend('mock');
@@ -130,6 +141,8 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   ...initialState,
   activeRole: 'operator',
   activeSection: 'operations',
+  isAuthenticated: false,
+  authUser: null,
   selectedDroneId: initialState.drones[0]?.id ?? '',
   activeLayers: initialLayerState,
   emergencyMode: false,
@@ -143,6 +156,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   lastError: null,
   alerts: initialAlerts,
   threeDView: false,
+  threeDClosing: false,
   closedCells: new Set<string>(),
   initialize: (): void => {
     const backend: DataBackend = resolveBackend(get().backendId);
@@ -167,6 +181,12 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     });
   },
   setRole: (role: UserRole): void => {
+    // RBAC (PRD §7): an authenticated operator cannot escalate to admin.
+    // Admins can switch freely between operator and admin perspectives.
+    const authed = get().authUser;
+    if (role === 'admin' && authed !== null && authed.role !== 'admin') {
+      return;
+    }
     const currentSection = get().activeSection;
     const adminOnlySections: NavSection[] = ['admin', 'approvals'];
     let nextSection: NavSection;
@@ -175,11 +195,12 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     } else {
       nextSection = adminOnlySections.includes(currentSection) ? 'operations' : currentSection;
     }
-    set({ activeRole: role, activeSection: nextSection, threeDView: false });
+    set({ activeRole: role, activeSection: nextSection, threeDView: false, threeDClosing: false });
   },
   navigate: (section: NavSection): void => set({ activeSection: section }),
-  openThreeDView: (): void => set({ threeDView: true }),
-  closeThreeDView: (): void => set({ threeDView: false }),
+  openThreeDView: (): void => set({ threeDView: true, threeDClosing: false }),
+  closeThreeDView: (): void => set({ threeDClosing: true }),
+  finishCloseThreeDView: (): void => set({ threeDView: false, threeDClosing: false }),
   selectDrone: (id: string): void => {
     const droneExists: boolean = get().drones.some((drone: Drone): boolean => drone.id === id);
     if (droneExists) {
@@ -338,6 +359,25 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       next.add(cellId);
     }
     set({ closedCells: next });
+  },
+  authenticate: (user: AuthUser): void => {
+    set({
+      isAuthenticated: true,
+      authUser: user,
+      activeRole: user.role,
+      activeSection: user.role === 'admin' ? 'admin' : 'operations',
+      threeDView: false,
+      threeDClosing: false,
+    });
+  },
+  logout: (): void => {
+    set({
+      isAuthenticated: false,
+      authUser: null,
+      threeDView: false,
+      threeDClosing: false,
+      emergencyMode: false,
+    });
   },
 }));
 

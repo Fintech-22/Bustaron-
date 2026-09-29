@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import App from '../App';
 import { TacticalMap } from '../components/map/TacticalMap';
 import { useDashboardStore } from '../store/dashboardStore';
+import { authAdmin } from './authHelper';
 import { ALTITUDE_BANDS_M, droneInBand, DEFAULT_ALTITUDE_BAND_M } from '../services/altitudeBands';
 import type { Drone } from '../types/domain';
 
 beforeEach((): void => {
   act((): void => {
     useDashboardStore.getState().initialize();
+    authAdmin();
   });
 });
 

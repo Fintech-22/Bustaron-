@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import App from '../App';
 import { useDashboardStore } from '../store/dashboardStore';
+import { authAdmin } from './authHelper';
 
 // Static imports (no vi.resetModules) so App and this test share ONE store
 // instance — same pattern as m2Flows.test.tsx. MapHost now defaults to the
@@ -18,6 +19,7 @@ describe('mobile navigation disclosure', () => {
   beforeEach((): void => {
     act((): void => {
       useDashboardStore.getState().initialize();
+      authAdmin();
     });
   });
 

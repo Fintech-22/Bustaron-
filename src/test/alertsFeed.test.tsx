@@ -2,10 +2,12 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import App from '../App';
 import { useDashboardStore } from '../store/dashboardStore';
+import { authAdmin } from './authHelper';
 import type { Alert } from '../types/domain';
 
 beforeEach((): void => {
   useDashboardStore.getState().initialize();
+  authAdmin();
 });
 
 /**

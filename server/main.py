@@ -77,6 +77,7 @@ from server.agents import (
     WeatherSnapshot,
     validate_exchange,
 )
+from server.auth import verify_credentials
 from server.authorities import read_public_keys, sign_block_hash, verify_quorum
 from server.json_http import RemoteCallError, get_json, post_json
 from server.weather import (
@@ -89,9 +90,16 @@ from server.weather import (
 app = FastAPI(title="BUSTARON M3 server", version="0.1.0")
 
 # The frontend dev/preview origins hit the API cross-origin (5173/4173).
+# In production, set BUSTARON_CORS_ORIGIN to the deployed frontend URL (e.g.
+# https://bustaron.vercel.app) so the Vercel frontend can reach this backend.
+_cors_regex = r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$"
+_extra_origin = (os.environ.get("BUSTARON_CORS_ORIGIN") or "").strip()
+if _extra_origin:
+    _cors_regex = rf"{_cors_regex}|^{re.escape(_extra_origin)}$"
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$",
+    allow_origin_regex=_cors_regex,
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
@@ -347,6 +355,9 @@ class State(BaseModel):
     #: untrustworthy — so refusals land here instead, and (unlike `load_error`) this
     #: field IS persisted, so the trail survives a restart.
     tamper_events: list[dict[str, Any]] = []
+    #: Operator workspace registrations filed through the Sign Up flow (PRD §7).
+    #: Keyed by registrationId for dedup; value carries the filed details.
+    registered_operators: list[dict[str, Any]] = []
 
 
 def _invalid_state(reason: str) -> State:
@@ -1005,6 +1016,19 @@ class FileApprovalPayload(BaseModel):
     requestedAtIso: str = Field(default_factory=_now_iso)
 
 
+# ── auth models (PRD §7) ──────────────────────────────────────────────────
+class LoginRequest(BaseModel):
+    userId: str
+    password: str
+
+
+class SignupRequest(BaseModel):
+    companyName: str
+    registrationId: str
+    fleetScale: str
+    pointOfContact: str
+
+
 # --------------------------------------------------------------------- routes
 @app.get("/api/health")
 def health() -> dict[str, Any]:
@@ -1033,7 +1057,63 @@ def health() -> dict[str, Any]:
         "auctions": len(state.auctions),
         "approvals": len(state.approvals),
         "wallets": len(state.wallets),
+        "registeredOperators": len(state.registered_operators),
     }
+
+
+# ── auth endpoints (PRD §7) ───────────────────────────────────────────────
+@app.post("/api/auth/login")
+def auth_login(req: LoginRequest) -> dict[str, Any]:
+    """Verifies credentials against env-var-backed seeds (server/auth.py).
+
+    Returns 401 on mismatch. The password is NEVER returned; only the role
+    and userId are echoed so the client can build its auth state.
+    """
+    creds = verify_credentials(req.userId, req.password)
+    if creds is None:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return {"ok": True, "userId": creds.user_id, "role": creds.role}
+
+
+@app.post("/api/auth/signup")
+def auth_signup(req: SignupRequest) -> dict[str, Any]:
+    """Registers a new operator workspace (PRD §7 Sign Up flow).
+
+    Validates required fields and deduplicates by registrationId. The
+    registration is persisted in state.registered_operators so it survives
+    restarts. Does NOT create login credentials — the seeded operator
+    credentials are used to sign in after registration is approved.
+    """
+    # Validate non-empty fields
+    fields = {
+        "companyName": req.companyName,
+        "registrationId": req.registrationId,
+        "fleetScale": req.fleetScale,
+        "pointOfContact": req.pointOfContact,
+    }
+    for field_name, value in fields.items():
+        if not value or not value.strip():
+            raise HTTPException(status_code=422, detail=f"{field_name} is required")
+
+    with STATE_LOCK:
+        state = load_state()
+        # Deduplicate by registrationId
+        for existing in state.registered_operators:
+            if existing.get("registrationId") == req.registrationId:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Registration ID '{req.registrationId}' already exists",
+                )
+        entry = {
+            "companyName": req.companyName.strip(),
+            "registrationId": req.registrationId.strip(),
+            "fleetScale": req.fleetScale.strip(),
+            "pointOfContact": req.pointOfContact.strip(),
+            "registeredAtIso": _now_iso(),
+        }
+        state.registered_operators.append(entry)
+        save_state(state)
+        return {"ok": True, "operatorId": req.registrationId.strip()}
 
 
 @app.get("/chain")

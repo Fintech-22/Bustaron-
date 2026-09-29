@@ -93,6 +93,10 @@ class HkoSnapshot(BaseModel):
     stationCount: int = 0
     temperatureC: float | None = None
     humidityPct: float | None = None
+    uvIndex: float | None = None
+    uvDesc: str | None = None
+    rainfallMm: float | None = None
+    warningMessage: str | None = None
     typhoonSignal: int = 0
     typhoonCode: str | None = None
     warnings: list[WeatherWarning] = Field(default_factory=list)
@@ -180,7 +184,12 @@ def parse_warnsum(payload: Any) -> dict[str, Any]:
 
 
 def parse_rhrread(payload: Any) -> dict[str, Any]:
-    """Temperature/humidity from `rhrread` (optional decoration; absent fields stay None)."""
+    """Temperature, humidity, UV index, rainfall and warning message from `rhrread`.
+
+    Extracts the HKO Headquarters readings as the canonical territory-level values
+    (consistent station across refreshes). UV index, rainfall and the human-readable
+    warning message are also captured for the analytics dashboard (STAGE 4).
+    """
     if not isinstance(payload, dict):
         return {}
 
@@ -196,7 +205,65 @@ def parse_rhrread(payload: Any) -> dict[str, Any]:
                 return float(entry["value"])
         return None
 
-    return {"temperatureC": first_value("temperature"), "humidityPct": first_value("humidity")}
+    def hko_value(field: str) -> float | None:
+        """Prefers the HKO Headquarters reading for consistency across refreshes."""
+        block = payload.get(field)
+        if not isinstance(block, dict):
+            return None
+        data = block.get("data")
+        if not isinstance(data, list):
+            return None
+        for entry in data:
+            if (
+                isinstance(entry, dict)
+                and isinstance(entry.get("value"), (int, float))
+                and "Hong Kong Observatory" in str(entry.get("place", ""))
+            ):
+                return float(entry["value"])
+        # Fall back to first available
+        for entry in data:
+            if isinstance(entry, dict) and isinstance(entry.get("value"), (int, float)):
+                return float(entry["value"])
+        return None
+
+    result: dict[str, Any] = {
+        "temperatureC": hko_value("temperature"),
+        "humidityPct": hko_value("humidity"),
+    }
+
+    # UV index (e.g. King's Park, value + desc)
+    uv_block = payload.get("uvindex")
+    if isinstance(uv_block, dict):
+        uv_data = uv_block.get("data")
+        if isinstance(uv_data, list):
+            for entry in uv_data:
+                if isinstance(entry, dict) and isinstance(entry.get("value"), (int, float)):
+                    result["uvIndex"] = float(entry["value"])
+                    result["uvDesc"] = entry.get("desc")
+                    break
+
+    # Rainfall — territory max across all districts
+    rain_block = payload.get("rainfall")
+    if isinstance(rain_block, dict):
+        rain_data = rain_block.get("data")
+        if isinstance(rain_data, list):
+            max_rain: float | None = None
+            for entry in rain_data:
+                if isinstance(entry, dict) and isinstance(entry.get("max"), (int, float)):
+                    val = float(entry["max"])
+                    if max_rain is None or val > max_rain:
+                        max_rain = val
+            if max_rain is not None:
+                result["rainfallMm"] = max_rain
+
+    # Warning message text (human-readable, complementing the coded warnings)
+    warn_msgs = payload.get("warningMessage")
+    if isinstance(warn_msgs, list) and warn_msgs:
+        first = warn_msgs[0]
+        if isinstance(first, str) and first.strip():
+            result["warningMessage"] = first.strip()
+
+    return result
 
 
 # --------------------------------------------------------------------------- fetching
