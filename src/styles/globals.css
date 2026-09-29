@@ -19,7 +19,7 @@
 :root {
   color-scheme: light;
 
-  /* --- Colour: light theme matching reference design --- */
+  /* --- Colour: light theme (preserved as fallback) --- */
   --color-bg: #f5f6f8;
   --color-bg-elevated: #ffffff;
   --color-panel: #ffffff;
@@ -37,25 +37,44 @@
   --color-purple: #9333ea;
   --shadow-panel: 0 2px 12px rgba(0, 0, 0, 0.08);
 
-  /* --- Spacing scale: 0.25rem increments (4px base unit) --- */
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.25rem;
-  --space-6: 1.5rem;
-  --space-7: 1.75rem;
-  --space-8: 2rem;
+  /* --- SkyFlow cyberpunk dark surface (default theme) --- */
+  --color-bg: #0b0c10;
+  --color-bg-elevated: #14161d;
+  --color-panel: #14161d;
+  --color-panel-strong: #0b0c10;
+  --color-border: #22252f;
+  --color-border-strong: #2c3140;
+  --color-text: #e5e7eb;
+  --color-muted: #8b94a7;
+  --color-subtle: #6b7280;
+  --color-radar: #4ade80;
+  --color-cyan: #22d3ee;
+  --color-amber: #fbbf24;
+  --color-red: #f87171;
+  --color-blue: #60a5fa;
+  --color-purple: #a78bfa;
+  --color-accent: #22d3ee;
+  --shadow-panel: none;
 
-  /* --- Type scale: numeric ramp (1 step ~ 1.15x) --- */
-  --font-size-2xs: 0.68rem;
-  --font-size-xs: 0.72rem;
-  --font-size-sm: 0.78rem;
-  --font-size-md: 0.85rem;
-  --font-size-lg: 1rem;
-  --font-size-xl: 1.15rem;
-  --font-size-2xl: 1.35rem;
-  --font-size-h1: clamp(1.35rem, 2.4vw, 2.1rem);
+  /* --- Hyper-density spacing (tactical / SkyFlow) --- */
+  --space-1: 0.2rem;
+  --space-2: 0.4rem;
+  --space-3: 0.6rem;
+  --space-4: 0.75rem;
+  --space-5: 1rem;
+  --space-6: 1.25rem;
+  --space-7: 1.5rem;
+  --space-8: 1.75rem;
+
+  /* --- Tactical type scale (sharp, compact) --- */
+  --font-size-2xs: 0.625rem;
+  --font-size-xs: 0.6875rem;
+  --font-size-sm: 0.75rem;
+  --font-size-md: 0.8125rem;
+  --font-size-lg: 0.875rem;
+  --font-size-xl: 1rem;
+  --font-size-2xl: 1.125rem;
+  --font-size-h1: 0.95rem;
 
   /* --- Type roles: h1 page title / h2 section / h3 subsection / body / small --- */
   --font-size-body: var(--font-size-lg);
@@ -95,10 +114,53 @@
   --focus-ring-offset: 3px;
   --focus-ring-color: rgba(74, 222, 128, 0.86);
   --transition-fast: 160ms ease;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --transition-panel: 300ms var(--ease-out);
+  --transition-pulse: 1.4s ease-in-out;
   --shadow-marker-glow: 0 0 0 0.35rem rgba(74, 222, 128, 0.12);
   --shadow-marker-hover: 0 0 0 0.4rem rgba(56, 189, 248, 0.16);
   --shadow-marker-selected: 0 0 0 0.45rem rgba(56, 189, 248, 0.2), 0 0 1.25rem var(--marker-color);
   --shadow-text: 0 1px 5px #000;
+}
+
+/* --- Light theme override (preserved from the original design) --- */
+.app-shell[data-theme='light'] {
+  color-scheme: light;
+
+  --color-bg: #f5f6f8;
+  --color-bg-elevated: #ffffff;
+  --color-panel: #ffffff;
+  --color-panel-strong: #f0f1f3;
+  --color-border: rgba(0, 0, 0, 0.1);
+  --color-border-strong: rgba(0, 0, 0, 0.18);
+  --color-text: #1a1d23;
+  --color-muted: #5a6472;
+  --color-subtle: #8a94a6;
+  --color-radar: #16a34a;
+  --color-cyan: #0891b2;
+  --color-amber: #d97706;
+  --color-red: #dc2626;
+  --color-blue: #2563eb;
+  --color-purple: #9333ea;
+  --shadow-panel: 0 2px 12px rgba(0, 0, 0, 0.08);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 1.75rem;
+  --space-8: 2rem;
+
+  --font-size-2xs: 0.68rem;
+  --font-size-xs: 0.72rem;
+  --font-size-sm: 0.78rem;
+  --font-size-md: 0.85rem;
+  --font-size-lg: 1rem;
+  --font-size-xl: 1.15rem;
+  --font-size-2xl: 1.35rem;
+  --font-size-h1: clamp(1.35rem, 2.4vw, 2.1rem);
 }
 
 * {
@@ -162,42 +224,59 @@ h3 {
   min-height: 100vh;
 }
 
-/* --- Shell: single column by default (mobile), sidebar rail from 1024px --- */
+/* --- Shell: tactical grid. Mobile-first stacks the sidebar; from 768px the
+   razor-thin rail sits on the left and the main column takes the rest. --- */
 .app-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-height: 100vh;
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
-/* Compact top padding on the base tier: with the disclosure collapsed the
-   brand row + toggle must fit in one small band so the map lands above the
-   fold at 320px (TRACE T7 finding 3). */
+@media (min-width: 768px) {
+  .app-shell {
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+  }
+}
+
+/* Razor-thin left rail on desktop (PRD-style aerospace console). The existing
+   SidebarNav JSX is untouched: we collapse label/description text and stack
+   the existing icon glyphs vertically via CSS only. Below 768px the original
+   stacked disclosure layout takes over so the map lands above the fold. */
 .sidebar {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: #1e1e2e;
-  padding: var(--space-3) var(--space-4) var(--space-4);
+  background: var(--color-panel);
+  border-right: 1px solid var(--color-border);
+  padding: var(--space-2) var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow-y: auto;
 }
 
-/* Brand row and the mobile disclosure toggle share one line below 768px. */
 .sidebar__topline {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
+  justify-content: flex-start;
+  gap: var(--space-2);
 }
 
 .sidebar__toggle {
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-/* Collapsed disclosure: the nav list drops out of flow below 768px. From the
-   768px tier up this class is never applied (SidebarNav always passes the open
-   class there and the toggle itself is display:none). */
+/* Disclosure: nav list drops out of flow below 768px. From the 768px tier up
+   the rail is always visible and the toggle is hidden (matches the original
+   behaviour). */
 .nav-group {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-2);
-  margin-top: var(--space-2);
+  gap: var(--space-1);
+  margin-top: var(--space-1);
 }
 
 .nav-group--collapsed {
@@ -219,52 +298,54 @@ h3 {
 .sidebar__brand {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-2) var(--space-4);
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) 0 var(--space-2);
   border-bottom: 1px solid var(--color-border);
+  width: 100%;
+}
+
+.sidebar__brand > div:last-child {
+  display: none; /* hide title/subtitle on the rail; brand mark carries identity */
 }
 
 .brand-mark {
   display: grid;
-  width: var(--brand-mark-size);
-  height: var(--brand-mark-size);
+  width: 1.75rem;
+  height: 1.75rem;
   place-items: center;
-  border: 1px solid rgba(74, 222, 128, 0.6);
-  border-radius: var(--radius-md);
-  background: rgba(74, 222, 128, 0.1);
-  color: var(--color-radar);
-  font-weight: 800;
+  border: 1px solid var(--color-cyan);
+  border-radius: var(--radius-sm);
+  background: rgba(34, 211, 238, 0.08);
+  color: var(--color-cyan);
+  font-weight: 700;
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.04em;
 }
 
 .sidebar__title {
   margin: 0;
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-xs);
   letter-spacing: 0.08em;
-  color: #e2e8f0;
+  color: var(--color-text);
 }
 
 .sidebar__subtitle,
 .sidebar .label-text,
 .sidebar .helper-text {
-  color: rgba(255, 255, 255, 0.5);
-  font-size: var(--font-size-small);
+  color: var(--color-subtle);
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
 }
 
 .label-text,
 .helper-text {
   color: var(--color-muted);
-  font-size: var(--font-size-small);
+  font-size: 0.625rem;
 }
 
 .nav-group__label {
-  grid-column: 1 / -1;
-  margin: 0 0 var(--space-2);
-  color: rgba(255, 255, 255, 0.4);
-  font-size: var(--font-size-xs);
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  display: none; /* hidden on the thin rail; the icon stack is self-evident */
 }
 
 .nav-button,
@@ -280,53 +361,94 @@ h3 {
      header container wraps instead. */
   white-space: nowrap;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background: var(--color-panel-strong);
   color: var(--color-text);
   transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
 
-/* Buttons inside the dark sidebar need light text */
-.sidebar .nav-button,
-.sidebar .control-button {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.8);
+/* Rail-mode nav buttons: stacked icon over micro fine-print label. */
+@media (min-width: 768px) {
+  .sidebar .nav-button {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: var(--space-1);
+    width: 100%;
+    text-align: center;
+    font-size: 0.5625rem;
+    line-height: var(--line-height-tight);
+    letter-spacing: 0.04em;
+    background: transparent;
+    border-color: transparent;
+    color: var(--color-muted);
+  }
+  .sidebar .nav-button > span:first-child {
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    color: var(--color-cyan);
+    letter-spacing: 0.06em;
+  }
+  .sidebar .nav-button > span:last-child {
+    font-size: 0;
+    /* Hide the label/description visually but keep them available to screen
+       readers (the button itself has aria-current + the inner text). */
+  }
+  .sidebar .nav-button strong {
+    font-size: 0.5625rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--color-text);
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  .sidebar .nav-button .helper-text {
+    display: none;
+  }
+  .sidebar .nav-button br {
+    display: none;
+  }
 }
 
-.sidebar .nav-button:hover,
-.sidebar .control-button:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.2);
+@media (hover: hover) and (pointer: fine) {
+  .sidebar .nav-button:hover {
+    border-color: var(--color-border-strong);
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
 }
 
 .sidebar .nav-button[aria-current='page'] {
-  background: rgba(8, 145, 178, 0.25);
-  border-color: rgba(8, 145, 178, 0.6);
-  color: #67e8f9;
+  background: rgba(34, 211, 238, 0.1);
+  border-color: var(--color-cyan);
+  color: var(--color-cyan);
 }
 
 .sidebar .nav-button:disabled {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.3);
+  opacity: 0.45;
 }
 
 .nav-button {
   width: 100%;
   justify-content: center;
   margin-bottom: 0;
-  padding: var(--space-3);
+  padding: var(--space-2);
   text-align: left;
 }
 
-.nav-button:hover,
-.role-button:hover,
-.layer-toggle:hover,
-.control-button:hover,
-.link-button:hover {
-  border-color: var(--color-border-strong);
-  background: var(--color-bg);
+@media (hover: hover) and (pointer: fine) {
+  .nav-button:hover,
+  .role-button:hover,
+  .layer-toggle:hover,
+  .control-button:hover,
+  .link-button:hover {
+    border-color: var(--color-border-strong);
+    background: var(--color-bg);
+  }
 }
 
 .nav-button[aria-current='page'],
@@ -350,25 +472,40 @@ h3 {
   transform: none;
 }
 
+/* Press feedback — subtle scale-down on active (Plan 002) */
+.nav-button:active:not(:disabled),
+.role-button:active:not(:disabled),
+.layer-toggle:active:not(:disabled),
+.control-button:active:not(:disabled),
+.link-button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
 .app-main {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
 }
 
 .top-bar {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--color-border);
-  background: #ffffff;
-  backdrop-filter: none;
-  position: static;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-panel);
 }
 
 .top-bar h1 {
   margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: var(--line-height-tight);
 }
 
 .top-bar__meta,
@@ -379,17 +516,19 @@ h3 {
 .drone-detail-grid,
 .admin-grid {
   display: flex;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  align-items: center;
 }
 
 .top-bar__meta {
   flex-wrap: wrap;
   color: var(--color-muted);
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.02em;
 }
 
 .role-switcher {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 /* PRD §11.3.3: operator impersonation for fleet scoping. */
@@ -405,29 +544,53 @@ h3 {
   border-radius: var(--radius-sm);
   color: var(--color-text);
   padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-xs);
 }
 
 .role-button,
 .control-button,
 .link-button {
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.04em;
+  border-radius: var(--radius-sm);
+  background: var(--color-panel-strong);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  line-height: var(--line-height-tight);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.role-button[aria-pressed='true'],
+.control-button[aria-pressed='true'] {
+  border-color: var(--color-cyan);
+  background: rgba(34, 211, 238, 0.08);
+  color: var(--color-cyan);
 }
 
 .dashboard-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
-  padding: var(--space-3);
+  grid-template-columns: minmax(0, 1fr) 16rem;
+  gap: var(--space-2);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@media (max-width: 1023px) {
+  .dashboard-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .map-column,
 .panel-stack {
   min-width: 0;
-}
-
-.panel-stack {
-  display: grid;
-  gap: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .panel,
@@ -435,49 +598,102 @@ h3 {
 .map-frame,
 .empty-state {
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: rgba(13, 23, 36, 0.86);
+  border-radius: var(--radius-sm);
+  background: var(--color-panel);
   box-shadow: var(--shadow-panel);
 }
 
 .panel {
-  padding: var(--space-4);
+  padding: var(--space-2) var(--space-3);
 }
 
 .panel__header {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
-  margin-bottom: var(--space-3);
-  /* In the wide-screen row layout the header sits in a narrow column; allow the
-     action button to drop onto its own line instead of squeezing the heading
-     and the button label into two wrapped lines each. */
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
   flex-wrap: wrap;
 }
 
 .panel__title {
   margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: var(--line-height-tight);
 }
 
 .panel__eyebrow {
   margin: 0 0 var(--space-1);
   color: var(--color-muted);
-  font-size: var(--font-size-xs);
+  font-size: 0.625rem;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
+  line-height: var(--line-height-tight);
 }
 
+/* Telemetry ribbon: SkyFlow-style compact horizontal strip of metric cards. */
 .metric-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  margin-bottom: var(--space-4);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+@media (max-width: 767px) {
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .metric-card {
-  padding: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: relative;
+}
+
+.metric-card__label {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.625rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 700;
+  line-height: var(--line-height-tight);
+}
+
+.metric-card__value {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-card__trend {
+  margin: 0;
+  color: var(--color-subtle);
+  font-size: 0.625rem;
+  letter-spacing: 0.06em;
+  line-height: var(--line-height-tight);
+}
+
+/* SkyFlow-style delta badge — repurposes the existing trend field as the
+   "tiny percentage delta indicator" without touching the MetricCard JSX. */
+.metric-card__trend::before {
+  content: '';
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-right: var(--space-1);
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
+  opacity: 0.7;
 }
 
 .metric-card__label {
@@ -619,13 +835,19 @@ h3 {
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.drone-marker:hover {
-  border-color: var(--color-cyan);
-  box-shadow: var(--shadow-marker-hover);
+@media (hover: hover) and (pointer: fine) {
+  .drone-marker:hover {
+    border-color: var(--color-cyan);
+    box-shadow: var(--shadow-marker-hover);
+  }
 }
 
 .drone-marker[aria-pressed='true'] {
   box-shadow: var(--shadow-marker-selected);
+}
+
+.drone-marker:active:not(:disabled) {
+  transform: translate(-50%, -50%) scale(0.93);
 }
 
 /* Keep the focus ring above neighbouring markers and the SVG surface. */
@@ -873,7 +1095,7 @@ h3 {
 .empty-state--loading .empty-state__glyph {
   border-color: var(--color-cyan);
   color: var(--color-cyan);
-  animation: bustaron-pulse 1.4s ease-in-out infinite;
+  animation: bustaron-pulse var(--transition-pulse) infinite;
 }
 
 @keyframes bustaron-pulse {
@@ -887,11 +1109,68 @@ h3 {
   }
 }
 
+@keyframes bustaron-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.section-transition {
+  animation: bustaron-fade-in 200ms var(--ease-out);
+}
+
 @media (prefers-reduced-motion: reduce) {
+  /* Kill keyframes and repetitive motion */
   * {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+  }
+
+  /* Drop position-changing transitions, keep color/border/opacity feedback */
+  .three-d__panel,
+  .three-d__panel--open {
+    transition: opacity var(--transition-fast);
+    transform: none;
+  }
+
+  .empty-state--loading .empty-state__glyph {
+    animation: none;
+    opacity: 0.6;
+  }
+
+  /* Press feedback: instant, not animated */
+  .nav-button:active:not(:disabled),
+  .role-button:active:not(:disabled),
+  .layer-toggle:active:not(:disabled),
+  .control-button:active:not(:disabled),
+  .link-button:active:not(:disabled),
+  .three-d__exit:active,
+  .three-d__panel-toggle:active,
+  .layer-button:active:not(:disabled),
+  .drone-marker:active:not(:disabled) {
+    transform: none;
+  }
+
+  /* Section crossfade and overlay fade: instant */
+  .section-transition,
+  .three-d-overlay,
+  .three-d-overlay[data-closing='true'] {
+    animation: none;
+  }
+
+  /* Flight detail expand: instant */
+  .flight-detail__row-wrapper,
+  .flight-detail__row-wrapper > .flight-detail__body {
+    transition: none;
+  }
+
+  /* Skycell detail panel: instant */
+  .skycell-detail {
+    animation: none;
   }
 }
 
@@ -1037,8 +1316,14 @@ h3 {
   text-transform: uppercase;
 }
 
-.data-table tbody tr:hover {
-  background: rgba(30, 41, 59, 0.4);
+.data-table tbody tr {
+  transition: background var(--transition-fast);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .data-table tbody tr:hover {
+    background: rgba(30, 41, 59, 0.4);
+  }
 }
 
 .mono {
@@ -1147,6 +1432,21 @@ h3 {
   inset: 0;
   z-index: 60;
   background: var(--color-bg);
+  animation: bustaron-overlay-in 250ms var(--ease-out);
+}
+
+.three-d-overlay[data-closing='true'] {
+  animation: bustaron-overlay-out 200ms var(--ease-out) forwards;
+}
+
+@keyframes bustaron-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes bustaron-overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 .three-d--fullscreen {
@@ -1218,9 +1518,19 @@ h3 {
   backdrop-filter: blur(4px);
 }
 
-.three-d__exit:hover {
-  background: rgba(0,0,0,0.6);
-  border-color: rgba(255,255,255,0.5);
+@media (hover: hover) and (pointer: fine) {
+  .three-d__exit:hover {
+    background: rgba(0,0,0,0.6);
+    border-color: rgba(255,255,255,0.5);
+  }
+}
+
+.three-d__exit {
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.three-d__exit:active {
+  transform: scale(0.97);
 }
 
 /* Floating panel toggle button */
@@ -1244,9 +1554,15 @@ h3 {
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
-.three-d__panel-toggle:hover {
-  background: rgba(0,0,0,0.7);
-  border-color: rgba(255,255,255,0.4);
+@media (hover: hover) and (pointer: fine) {
+  .three-d__panel-toggle:hover {
+    background: rgba(0,0,0,0.7);
+    border-color: rgba(255,255,255,0.4);
+  }
+}
+
+.three-d__panel-toggle:active {
+  transform: scale(0.97);
 }
 
 .three-d__panel-toggle--open {
@@ -1269,7 +1585,7 @@ h3 {
   background: linear-gradient(to top, rgba(0,0,0,0.75), rgba(0,0,0,0.5) 70%, transparent);
   transform: translateY(100%);
   opacity: 0;
-  transition: transform 0.3s ease, opacity 0.3s ease;
+  transition: transform var(--transition-panel), opacity var(--transition-panel);
   pointer-events: none;
 }
 
@@ -1298,6 +1614,7 @@ h3 {
   color: rgba(255,255,255,0.6);
   text-align: left;
   backdrop-filter: blur(4px);
+  transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
 
 .layer-button strong {
@@ -1305,8 +1622,10 @@ h3 {
   font-size: var(--font-size-sm);
 }
 
-.layer-button:hover {
-  border-color: rgba(255,255,255,0.35);
+@media (hover: hover) and (pointer: fine) {
+  .layer-button:hover {
+    border-color: rgba(255,255,255,0.35);
+  }
 }
 
 .layer-button[aria-pressed='true'] {
@@ -1317,6 +1636,10 @@ h3 {
 
 .layer-button:disabled {
   opacity: 0.4;
+}
+
+.layer-button:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .three-d__status {
@@ -1641,6 +1964,28 @@ h3 {
   background: rgba(2, 6, 23, 0.55);
 }
 
+/* Expand/collapse animation (Plan 007) */
+.flight-detail__row-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 250ms var(--ease-out);
+}
+
+.flight-detail__row-wrapper--open {
+  grid-template-rows: 1fr;
+}
+
+.flight-detail__row-wrapper > .flight-detail__body {
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 200ms var(--ease-out);
+}
+
+.flight-detail__row-wrapper--open > .flight-detail__body {
+  opacity: 1;
+  transition-delay: 50ms;
+}
+
 @media (min-width: 1024px) {
   .flight-detail__body {
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, 1fr);
@@ -1871,8 +2216,14 @@ h3 {
   text-align: left;
 }
 
-.airspace-sidebar__link:hover {
-  background: rgba(8, 47, 73, 0.4);
+.airspace-sidebar__link {
+  transition: background var(--transition-fast);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .airspace-sidebar__link:hover {
+    background: rgba(8, 47, 73, 0.4);
+  }
 }
 
 .airspace-sidebar__link--active {
@@ -2014,6 +2365,19 @@ h3 {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
   font-size: 0.875rem;
   color: var(--color-text, #e5edf7);
+  animation: bustaron-panel-in 160ms var(--ease-out);
+}
+
+@keyframes bustaron-panel-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .skycell-detail__header {

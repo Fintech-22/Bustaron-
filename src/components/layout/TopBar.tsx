@@ -9,6 +9,8 @@ interface TopBarProps {
   lastUpdatedIso: string;
   onRoleChange: (role: UserRole) => void;
   onEmergency: () => void;
+  theme: 'dark' | 'light';
+  onThemeToggle: () => void;
 }
 
 const sectionTitleById: Record<NavSection, string> = {
@@ -39,6 +41,8 @@ export function TopBar({
   lastUpdatedIso,
   onRoleChange,
   onEmergency,
+  theme,
+  onThemeToggle,
 }: TopBarProps): JSX.Element {
   const backendLabel = useDashboardStore((state) => resolveBackend(state.backendId).label);
   const currentOperatorId = useDashboardStore((state) => state.currentOperatorId);
@@ -125,6 +129,17 @@ export function TopBar({
         >
           <span aria-hidden="true">EMG</span>
           {emergencyMode ? 'Emergency active' : 'Emergency hold'}
+        </button>
+        {/* Theme toggle — new affordance, no existing handler touched. */}
+        <button
+          type="button"
+          className="control-button"
+          aria-pressed={theme === 'dark'}
+          onClick={onThemeToggle}
+          title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+        >
+          <span aria-hidden="true">{theme === 'dark' ? '☾' : '☼'}</span>
+          {theme === 'dark' ? 'Dark' : 'Light'}
         </button>
       </div>
     </header>

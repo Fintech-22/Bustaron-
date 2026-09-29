@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { EmptyState } from '../common/EmptyState';
 import { MetricCard } from '../common/MetricCard';
 import { MapHost } from '../map/MapHost';
@@ -32,6 +32,14 @@ function useAutoInitialize(): void {
 export function AppShell(): JSX.Element {
   useAutoInitialize();
 
+  // New (additive, no existing state touched): theme toggle between the
+  // cyberpunk dark surface and the light fallback. Applied via [data-theme]
+  // on the shell root so globals.css can repaint every descendant in one pass.
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const toggleTheme = (): void => {
+    setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
+  };
+
   const activeRole = useDashboardStore((state) => state.activeRole);
   const activeSection = useDashboardStore((state) => state.activeSection);
   const drones = useDashboardStore((state) => state.drones);
@@ -41,6 +49,8 @@ export function AppShell(): JSX.Element {
   const lastUpdatedIso = useDashboardStore((state) => state.lastUpdatedIso);
   const emergencyMode = useDashboardStore((state) => state.emergencyMode);
   const threeDView = useDashboardStore((state) => state.threeDView);
+  const threeDClosing = useDashboardStore((state) => state.threeDClosing);
+  const finishCloseThreeDView = useDashboardStore((state) => state.finishCloseThreeDView);
   const setRole = useDashboardStore((state) => state.setRole);
   const navigate = useDashboardStore((state) => state.navigate);
   const triggerEmergency = useDashboardStore((state) => state.triggerEmergency);
@@ -79,7 +89,7 @@ export function AppShell(): JSX.Element {
   const visibleMetrics = activeRole === 'admin' ? adminMetrics : operatorMetrics;
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-theme={theme}>
       <SidebarNav activeRole={activeRole} activeSection={activeSection} onNavigate={navigate} />
       <div className="app-main">
         <TopBar
@@ -89,6 +99,8 @@ export function AppShell(): JSX.Element {
           lastUpdatedIso={lastUpdatedIso}
           onRoleChange={setRole}
           onEmergency={emergencyAction}
+          theme={theme}
+          onThemeToggle={toggleTheme}
         />
         <main className="dashboard-layout" id="main-content">
           <section className="map-column" aria-label="Tactical dashboard">
@@ -104,36 +116,38 @@ export function AppShell(): JSX.Element {
                 />
               ))}
             </div>
-            {activeSection === 'operations' && <MapHost />}
-            {activeSection === 'missions' && <FlightPlansPanel />}
-            {activeSection === 'wallet' && <CreditWalletPanel />}
-            {activeSection === 'esg' && <EsgScorecardPanel />}
-            {activeSection === 'fleet' && <FleetPanel />}
-            {activeSection === 'analytics' && <AnalyticsPanel />}
-            {activeSection === 'alerts' && <AlertsPanel />}
-            {activeSection === 'weather' && <WeatherPanel />}
-            {activeSection === 'flightDetail' && activeRole === 'operator' && <FlightDetailPanel />}
-            {activeSection === 'flightDetail' && activeRole !== 'operator' && (
-              <EmptyState
-                title="Operator role required"
-                message="Switch to Operator in the top bar to view the flight detail workspace."
-              />
-            )}
-            {activeSection === 'airspace' && activeRole === 'admin' && <AirspaceManagementPanel />}
-            {activeSection === 'airspace' && activeRole !== 'admin' && (
-              <EmptyState
-                title="Admin role required"
-                message="Switch to Admin in the top bar to view the airspace management console."
-              />
-            )}
-            {activeSection === 'approvals' && activeRole === 'admin' && <ApprovalsQueuePanel expanded />}
-            {activeSection === 'admin' && activeRole === 'admin' && <AdminPanel expanded />}
-            {(activeSection === 'admin' || activeSection === 'approvals' || activeSection === 'airspace') && activeRole !== 'admin' && (
-              <EmptyState
-                title="Admin role required"
-                message="Switch to Admin in the top bar to view the approvals queue and compliance controls."
-              />
-            )}
+            <div key={activeSection} className="section-transition">
+              {activeSection === 'operations' && <MapHost />}
+              {activeSection === 'missions' && <FlightPlansPanel />}
+              {activeSection === 'wallet' && <CreditWalletPanel />}
+              {activeSection === 'esg' && <EsgScorecardPanel />}
+              {activeSection === 'fleet' && <FleetPanel />}
+              {activeSection === 'analytics' && <AnalyticsPanel />}
+              {activeSection === 'alerts' && <AlertsPanel />}
+              {activeSection === 'weather' && <WeatherPanel />}
+              {activeSection === 'flightDetail' && activeRole === 'operator' && <FlightDetailPanel />}
+              {activeSection === 'flightDetail' && activeRole !== 'operator' && (
+                <EmptyState
+                  title="Operator role required"
+                  message="Switch to Operator in the top bar to view the flight detail workspace."
+                />
+              )}
+              {activeSection === 'airspace' && activeRole === 'admin' && <AirspaceManagementPanel />}
+              {activeSection === 'airspace' && activeRole !== 'admin' && (
+                <EmptyState
+                  title="Admin role required"
+                  message="Switch to Admin in the top bar to view the airspace management console."
+                />
+              )}
+              {activeSection === 'approvals' && activeRole === 'admin' && <ApprovalsQueuePanel expanded />}
+              {activeSection === 'admin' && activeRole === 'admin' && <AdminPanel expanded />}
+              {(activeSection === 'admin' || activeSection === 'approvals' || activeSection === 'airspace') && activeRole !== 'admin' && (
+                <EmptyState
+                  title="Admin role required"
+                  message="Switch to Admin in the top bar to view the approvals queue and compliance controls."
+                />
+              )}
+            </div>
           </section>
           <aside className="panel-stack" aria-label="Context panels">
             <StatusPanel />
@@ -145,7 +159,13 @@ export function AppShell(): JSX.Element {
       {/* PRD S127: full screen, over the 2D dashboard — the dashboard itself stays mounted
           so exiting returns to it with its own state intact (S129). */}
       {threeDView && (
-        <div className="three-d-overlay">
+        <div
+          className="three-d-overlay"
+          data-closing={threeDClosing ? 'true' : undefined}
+          onAnimationEnd={(): void => {
+            if (threeDClosing) finishCloseThreeDView();
+          }}
+        >
           <ThreeDViewPanel />
         </div>
       )}
